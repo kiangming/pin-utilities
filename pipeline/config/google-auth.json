@@ -1,0 +1,15 @@
+{
+  "_comment": "Google OAuth 2.0 + fetch settings for Game Launching Pipeline",
+  "_setup": [
+    "1. Go to https://console.cloud.google.com/",
+    "2. Create project → Enable 'Google Sheets API'",
+    "3. APIs & Services → Credentials → Create OAuth 2.0 Client ID (Web application)",
+    "4. Add your domain to 'Authorized JavaScript origins'",
+    "5. Paste the generated Client ID into clientId below"
+  ],
+  "clientId": "1075275210408-9og4askb5iua11hk37ithv55fbp6kbmk.apps.googleusercontent.com",
+  "scopes": ["https://www.googleapis.com/auth/spreadsheets.readonly"],
+  "fetchTimeoutMs": 30000,
+  "sessionStorageKey": "pipeline_gauth_token",
+  "tokenExpiryBufferSec": 120
+}

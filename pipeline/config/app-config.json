@@ -1,0 +1,11 @@
+{
+  "_comment": "Game Launching Pipeline — app config. sheetUrl editable from UI.",
+  "sheetUrl": "",
+  "sheetTabs": {
+    "release2026": "List game release 2026",
+    "release2025": "List game release 2025",
+    "close2026":   "List game close 2026",
+    "close2025":   "List game close 2025"
+  },
+  "fetchRangeRows": 300
+}
