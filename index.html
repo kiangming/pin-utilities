@@ -750,7 +750,7 @@ function appleIcon(size=12) {
 }
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-const PROXY = 'http://localhost:8765';
+const PROXY = '';  // same origin — backend FastAPI xử lý /api/*
 
 function escapeHTML(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -889,7 +889,7 @@ async function fetchConfig() {
       return { data: json.data, error: null };
     } catch(e) {
       if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-        throw new Error(`Cannot connect to proxy at ${PROXY}\n\nRun: python3 proxy.py\n\n${e.message}`);
+        throw new Error(`Cannot connect to backend.\n\nRun: python -m uvicorn backend.main:app --port 8080\n\n${e.message}`);
       }
       return { data: null, error: e.message };
     }
