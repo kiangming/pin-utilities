@@ -314,7 +314,7 @@
   .app-body { display: flex; flex: 1; overflow: hidden; }
   .left-nav {
     width: 220px; min-width: 220px;
-    background: #13151f;
+    background: var(--nav-bg);
     border-right: 1px solid var(--border);
     display: flex; flex-direction: column;
     overflow-y: auto;
@@ -336,7 +336,7 @@
   .nav-item.active {
     background: rgba(108,99,255,0.12);
     border-left-color: var(--accent);
-    color: #fff;
+    color: var(--text);
   }
   .nav-item-icon { font-size: 15px; width: 20px; text-align: center; }
   .nav-section-divider {
