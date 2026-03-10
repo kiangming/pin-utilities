@@ -1,0 +1,1644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SDK Config Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2d3150;
+    --border2: #3d4270;
+    --text: #ffffff;
+    --text2: #b8bde8;
+    --text3: #8b91c2;
+    --accent: #6c63ff;
+    --accent2: #8b85ff;
+    --green: #4ade80;
+    --green-bg: rgba(74,222,128,0.1);
+    --red: #f87171;
+    --red-bg: rgba(248,113,113,0.1);
+    --yellow: #fbbf24;
+    --yellow-bg: rgba(251,191,36,0.1);
+    --blue: #60a5fa;
+    --blue-bg: rgba(96,165,250,0.1);
+    --orange: #fb923c;
+    --purple: #c084fc;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .header-title { font-size: 16px; font-weight: 600; }
+  .header-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .timestamp { font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+
+  /* GAME SELECTOR */
+  .selector-section {
+    padding: 20px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .selector-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .game-input-wrap { display: flex; flex: 1; min-width: 240px; align-items: center; background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; padding: 0 12px; gap: 8px; }
+  .game-input-wrap span { color: var(--text3); font-size: 13px; white-space: nowrap; font-family: 'JetBrains Mono', monospace; }
+  .game-input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; padding: 10px 0;
+  }
+  .game-input::placeholder { color: var(--text3); }
+  .btn-fetch {
+    background: var(--accent); color: white; border: none;
+    padding: 10px 20px; border-radius: 8px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  .btn-fetch:hover { background: var(--accent2); transform: translateY(-1px); }
+  .btn-fetch:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .recent-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+  .recent-label { font-size: 12px; color: var(--text3); }
+  .pill {
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 4px 12px; border-radius: 20px; font-size: 12px;
+    cursor: pointer; color: var(--text2); transition: all 0.15s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .pill:hover { border-color: var(--accent); color: var(--accent); }
+
+  .status-bar {
+    margin-top: 10px; padding: 8px 12px; border-radius: 6px;
+    font-size: 13px; display: none; align-items: center; gap: 8px;
+  }
+  .status-bar.loading { display: flex; background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(96,165,250,0.2); }
+  .status-bar.error { display: flex; background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+  .status-bar.success { display: flex; background: var(--green-bg); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+
+  .spinner { width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* SUMMARY BAR */
+  .summary-bar {
+    display: none; padding: 16px 24px;
+    gap: 12px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .summary-bar.visible { display: flex; }
+  .stat-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 10px 16px; border-radius: 8px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .stat-icon { font-size: 18px; }
+  .stat-value { font-size: 20px; font-weight: 700; line-height: 1; }
+  .stat-label { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .stat-green .stat-value { color: var(--green); }
+  .stat-red .stat-value { color: var(--red); }
+  .stat-blue .stat-value { color: var(--blue); }
+  .stat-game { display: flex; align-items: center; gap: 8px; }
+  .game-badge {
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    color: white; padding: 4px 12px; border-radius: 20px;
+    font-size: 12px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* MAIN CONTENT */
+  .main { display: flex; height: calc(100vh - 220px); overflow: hidden; }
+  .feature-list { width: 340px; min-width: 340px; border-right: 1px solid var(--border); overflow-y: auto; }
+  .detail-panel { flex: 1; overflow-y: auto; }
+
+  /* FEATURE CARD */
+  .feature-card {
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    cursor: pointer; transition: all 0.15s;
+    border-left: 3px solid transparent;
+  }
+  .feature-card:hover { background: var(--surface2); }
+  .feature-card.active { background: rgba(108,99,255,0.08); border-left-color: var(--accent); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .card-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+  .card-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .badge {
+    font-size: 11px; font-weight: 600; padding: 2px 8px;
+    border-radius: 20px; letter-spacing: 0.3px;
+  }
+  .badge-on { background: var(--green-bg); color: var(--green); border: 1px solid rgba(74,222,128,0.3); }
+  .badge-off { background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+  .badge-cfg { background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(96,165,250,0.3); }
+  .card-summary { font-size: 12px; color: var(--text3); padding-left: 36px; }
+
+  /* EMPTY STATE */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; gap: 16px; padding: 40px;
+  }
+  .empty-icon { font-size: 48px; opacity: 0.3; }
+  .empty-title { font-size: 16px; font-weight: 600; color: var(--text2); }
+  .empty-sub { font-size: 13px; color: var(--text3); text-align: center; }
+
+  /* DETAIL PANEL CONTENT */
+  .detail-content { padding: 24px; }
+  .detail-header { margin-bottom: 20px; }
+  .detail-title { font-size: 20px; font-weight: 700; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .detail-title-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .detail-description { font-size: 13px; color: var(--text3); }
+
+  .section { margin-bottom: 20px; }
+  .section-title { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+
+  .kv-table { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .kv-row { display: flex; align-items: flex-start; border-bottom: 1px solid var(--border); }
+  .kv-row:last-child { border-bottom: none; }
+  .kv-key { width: 160px; min-width: 160px; padding: 10px 14px; font-size: 12px; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+  .kv-val { flex: 1; padding: 10px 14px; font-size: 13px; color: var(--text); word-break: break-all; }
+  .kv-val.mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent2); }
+  .kv-val.url { color: var(--blue); font-size: 12px; font-family: 'JetBrains Mono', monospace; }
+  .kv-val a { color: var(--blue); text-decoration: none; }
+  .kv-val a:hover { text-decoration: underline; }
+
+  /* Login channel grid */
+  .channel-grid { display: flex; flex-direction: column; gap: 6px; }
+  .channel-line { display: flex; align-items: center; gap: 8px; }
+  .line-label { font-size: 11px; color: var(--text3); width: 40px; font-family: 'JetBrains Mono', monospace; }
+  .channel-pill {
+    padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+    font-family: 'JetBrains Mono', monospace; background: var(--surface);
+    border: 1px solid var(--border2);
+  }
+
+  /* URL highlight */
+  .url-template { font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.8; background: var(--surface2); padding: 12px; border-radius: 8px; border: 1px solid var(--border); word-break: break-all; }
+  .url-param { background: var(--yellow-bg); color: var(--yellow); padding: 1px 4px; border-radius: 4px; }
+
+  /* Policy dialog preview */
+  .dialog-preview { border-radius: 10px; padding: 16px; max-width: 300px; }
+  .dialog-title-text { font-size: 14px; font-weight: 600; margin-bottom: 12px; line-height: 1.4; }
+  .dialog-agree-text { font-size: 12px; margin-bottom: 12px; }
+  .dialog-btns { display: flex; gap: 8px; }
+  .dialog-btn { flex: 1; padding: 8px; border-radius: 6px; font-size: 13px; font-weight: 600; text-align: center; cursor: pointer; border: 1.5px solid; }
+
+  /* Policy links */
+  .policy-link { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; text-decoration: none; color: var(--text); transition: all 0.15s; }
+  .policy-link:hover { border-color: var(--accent); }
+  .policy-link-title { font-size: 13px; font-weight: 500; }
+  .policy-link-arrow { color: var(--text3); }
+
+  /* Raw JSON */
+  .raw-toggle { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: var(--text3); background: none; border: none; padding: 8px 0; }
+  .raw-toggle:hover { color: var(--text2); }
+  pre {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; overflow: auto; max-height: 200px; color: var(--text2);
+    display: none; margin-top: 8px;
+  }
+  pre.open { display: block; }
+  .copy-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text2);
+    padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* Animations */
+  .feature-card { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  .detail-content { animation: slideIn 0.2s ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* Paste area */
+  .paste-toggle { font-size: 12px; color: var(--text3); background: none; border: none; cursor: pointer; text-decoration: underline; padding: 0; }
+  .paste-toggle:hover { color: var(--text2); }
+  .paste-area { margin-top: 10px; display: none; }
+  .paste-area.open { display: block; }
+  .paste-area textarea {
+    width: 100%; background: var(--bg); border: 1px solid var(--border2);
+    color: var(--text); border-radius: 8px; padding: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    resize: vertical; min-height: 80px; outline: none;
+  }
+  .paste-area textarea:focus { border-color: var(--accent); }
+  .btn-parse { margin-top: 6px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-family: 'DM Sans', sans-serif; }
+  .btn-parse:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* LEFT NAV */
+  .app-shell { display: flex; height: 100vh; overflow: hidden; flex-direction: column; }
+  .app-body { display: flex; flex: 1; overflow: hidden; }
+  .left-nav {
+    width: 220px; min-width: 220px;
+    background: #13151f;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow-y: auto;
+  }
+  .left-nav-header {
+    padding: 16px 16px 10px;
+    font-size: 10px; font-weight: 700;
+    color: var(--text3); text-transform: uppercase; letter-spacing: 1.2px;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--text2);
+    border-left: 3px solid transparent;
+    transition: all 0.15s; border-radius: 0;
+    text-decoration: none;
+  }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active {
+    background: rgba(108,99,255,0.12);
+    border-left-color: var(--accent);
+    color: #fff;
+  }
+  .nav-item-icon { font-size: 15px; width: 20px; text-align: center; }
+  .nav-section-divider {
+    margin: 10px 16px; border: none;
+    border-top: 1px solid var(--border);
+  }
+  .app-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  /* override main height since now inside flex */
+  .main { flex: 1; height: auto; }
+
+
+  /* TOOL PANELS */
+  .tool-panel { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+  #batchSummary { display: none; }
+  #batchSummary.visible { display: flex !important; }
+
+  /* TABLE ROW HOVER — batch tables */
+  .tr-game {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s, box-shadow 0.12s;
+    border-left: 3px solid transparent;
+  }
+  .tr-game:hover {
+    background: var(--surface2) !important;
+    border-left-color: var(--accent);
+  }
+  .tr-game:hover td:first-child {
+    color: #fff;
+  }
+  /* Feature stats row */
+  .tr-feature {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.12s;
+    border-left: 3px solid transparent;
+  }
+  .tr-feature:hover {
+    background: var(--surface2) !important;
+    border-left-color: var(--accent);
+  }
+  .tr-feature:hover td:first-child {
+    color: #fff;
+  }
+  /* Country sub-row hover */
+  .tr-country {
+    border-bottom: 1px solid var(--border);
+    background: rgba(108,99,255,0.04);
+    transition: background 0.12s;
+    border-left: 3px solid transparent;
+  }
+  .tr-country:hover {
+    background: rgba(108,99,255,0.12) !important;
+    border-left-color: #a78bfa;
+  }
+  .tr-country:hover td:first-child {
+    color: var(--text2);
+  }
+
+</style>
+  <!-- Pipeline feature CSS -->
+  <link rel="stylesheet" href="css/pipeline.css">
+</head>
+<body>
+<div class="app-shell">
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">⚙️</div>
+    <div>
+      <div class="header-title">SDK Config Analyzer</div>
+      <div class="header-sub">VNGGames Bootstrap Inspector</div>
+    </div>
+  </div>
+  <div class="header-right" style="display:flex;align-items:center;gap:12px;">
+    <div class="timestamp" id="timestamp">—</div>
+    <div id="user-info" style="display:none;align-items:center;gap:8px;">
+      <img id="user-avatar" src="" alt="" style="width:28px;height:28px;border-radius:50%;border:1px solid #3d4170;">
+      <span id="user-name" style="font-size:13px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+      <button onclick="ApiClient.logout()" style="background:#2a2d3e;border:1px solid #3d4170;color:var(--text2);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;">Logout</button>
+    </div>
+  </div>
+</div>
+
+<div class="app-body">
+
+<!-- LEFT NAV -->
+<nav class="left-nav">
+  <div class="left-nav-header">Tools</div>
+  <a class="nav-item active" onclick="selectTool('sdk-config')" href="#">
+    <span class="nav-item-icon">⚙️</span>
+    SDK Config Analyzer
+  </a>
+  <a class="nav-item" onclick="selectTool('batch-stats', this)" href="#">
+    <span class="nav-item-icon">📊</span>
+    SDK Features Statistic
+  </a>
+  <a class="nav-item" onclick="selectTool('pipeline', this)" href="#">
+    <span class="nav-item-icon">🚀</span>
+    Game Launching Pipeline
+  </a>
+  <hr class="nav-section-divider">
+</nav>
+
+<!-- APP CONTENT -->
+<div class="app-content">
+
+<div id="tool-sdk-config" class="tool-panel">
+<!-- GAME SELECTOR -->
+<div class="selector-section">
+  <div class="selector-row">
+    <div class="game-input-wrap">
+      <span>https://login-</span>
+      <input class="game-input" id="gameIdInput" placeholder="demovn" value="" />
+      <span>.vnggames.net/?do=Bootstrap.show</span>
+    </div>
+    <button class="btn-fetch" id="fetchBtn" onclick="fetchConfig()">Fetch Config</button>
+    <button class="paste-toggle" onclick="togglePaste()">or paste JSON</button>
+  </div>
+
+  <!-- Country input row -->
+  <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+    <span style="font-size:11px;color:var(--text3);white-space:nowrap;font-weight:600;text-transform:uppercase;letter-spacing:.6px;">🌍 Countries</span>
+    <div style="flex:1;max-width:400px;position:relative;">
+      <input id="countryInput"
+        style="width:100%;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace;outline:none;transition:border-color .15s;"
+        placeholder="VN ; TH ; ID  (optional, separated by ;)"
+        oninput="renderCountryPreview()"
+        onfocus="this.style.borderColor='var(--accent)'"
+        onblur="this.style.borderColor='var(--border2)'" />
+    </div>
+    <div id="countryPreviewPills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+  </div>
+
+  <div class="recent-pills" id="recentPills">
+    <span class="recent-label">Recent:</span>
+  </div>
+
+  <div class="paste-area" id="pasteArea">
+    <textarea id="pasteInput" placeholder='Paste JSON config here...'></textarea>
+    <button class="btn-parse" onclick="parseManual()">Parse JSON</button>
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+</div>
+
+<!-- SUMMARY BAR -->
+<div class="summary-bar" id="summaryBar">
+  <div class="stat-card">
+    <div class="stat-icon">🎮</div>
+    <div>
+      <div class="stat-value stat-game">
+        <span class="game-badge" id="summaryGameId">—</span>
+      </div>
+      <div class="stat-label">Game ID</div>
+    </div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-icon">✅</div>
+    <div>
+      <div class="stat-value" id="enabledCount">0</div>
+      <div class="stat-label">Enabled</div>
+    </div>
+  </div>
+  <div class="stat-card stat-red">
+    <div class="stat-icon">❌</div>
+    <div>
+      <div class="stat-value" id="disabledCount">0</div>
+      <div class="stat-label">Disabled</div>
+    </div>
+  </div>
+  <div class="stat-card stat-blue">
+    <div class="stat-icon">📦</div>
+    <div>
+      <div class="stat-value" id="totalCount">0</div>
+      <div class="stat-label">Total Features</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon">🕐</div>
+    <div>
+      <div class="stat-value" id="configTimestamp" style="font-size:13px; color: var(--text2);">—</div>
+      <div class="stat-label">Config Timestamp</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="feature-list" id="featureList">
+    <div class="empty-state">
+      <div class="empty-icon">🔍</div>
+      <div class="empty-title">No config loaded</div>
+      <div class="empty-sub">Enter a Game ID and click Fetch Config<br>to inspect the SDK configuration</div>
+    </div>
+  </div>
+  <div class="detail-panel" id="detailPanel">
+    <div class="empty-state">
+      <div class="empty-icon">👈</div>
+      <div class="empty-title">Select a feature</div>
+      <div class="empty-sub">Click any feature card on the left<br>to view its detailed configuration</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /tool-sdk-config -->
+
+<!-- BATCH STATS PANEL -->
+<div id="tool-batch-stats" class="tool-panel" style="display:none; flex:1; flex-direction:column; overflow:hidden;">
+
+  <!-- Batch Header -->
+  <div class="selector-section">
+    <div style="font-size:15px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+      📊 SDK Features Statistic
+    </div>
+    <div class="selector-row" style="align-items:flex-start; gap:10px; flex-wrap:wrap;">
+      <div style="flex:1; min-width:300px;">
+        <div style="font-size:11px; color:var(--text3); margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:.8px;">Path to games.txt file</div>
+        <div style="display:flex; gap:8px;">
+          <input id="batchFilePath" class="game-input" style="flex:1; background:var(--bg); border:1px solid var(--border2); border-radius:8px; padding:9px 12px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; outline:none;"
+            placeholder="/Users/you/games.txt" />
+          <button class="btn-fetch" id="batchRunBtn" onclick="startBatch()">▶ Run Analysis</button>
+        </div>
+        <div style="font-size:11px; color:var(--text3); margin-top:6px;">
+          File format: one gameID per line. Lines starting with <code style="background:var(--surface2); padding:1px 5px; border-radius:3px;">#</code> are ignored.
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+          <span style="font-size:11px;color:var(--text3);white-space:nowrap;font-weight:600;text-transform:uppercase;letter-spacing:.6px;">🌍 Countries</span>
+          <input id="batchCountryInput"
+            style="flex:1;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace;outline:none;"
+            placeholder="VN ; TH ; ID  (optional, separated by ;)"
+            oninput="renderBatchCountryPreview()"
+            onfocus="this.style.borderColor='var(--accent)'"
+            onblur="this.style.borderColor='var(--border2)'" />
+          <div id="batchCountryPreviewPills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="batchProgress" style="display:none; margin-top:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span id="batchProgressLabel" style="font-size:12px; color:var(--text2);">0 / 0 games</span>
+        <span id="batchProgressPct" style="font-size:12px; font-weight:700; color:var(--accent);">0%</span>
+        <span id="batchTimer" style="font-size:12px; color:var(--text3); font-family:'JetBrains Mono',monospace;">⏱ 0s</span>
+      </div>
+      <div style="background:var(--surface2); border-radius:20px; height:6px; overflow:hidden;">
+        <div id="batchProgressBar" style="height:100%; background:linear-gradient(90deg,var(--accent),var(--purple)); border-radius:20px; width:0%; transition:width 0.3s ease;"></div>
+      </div>
+      <div id="batchStatusMsg" style="font-size:11px; color:var(--text3); margin-top:6px;"></div>
+    </div>
+
+    <div id="batchError" style="display:none; margin-top:10px;"></div>
+  </div>
+
+  <!-- Summary Cards -->
+  <div id="batchSummary" style="display:none; padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border); display:none; gap:12px; flex-wrap:wrap;">
+    <div class="stat-card"><div class="stat-icon">🎮</div><div><div class="stat-value" id="bs-total" style="color:var(--text)">0</div><div class="stat-label">Total Games</div></div></div>
+    <div class="stat-card stat-green"><div class="stat-icon">✅</div><div><div class="stat-value" id="bs-ok">0</div><div class="stat-label">Success</div></div></div>
+    <div class="stat-card stat-red"><div class="stat-icon">⚠️</div><div><div class="stat-value" id="bs-fail">0</div><div class="stat-label">Failed</div></div></div>
+    <div class="stat-card stat-blue"><div class="stat-icon">📦</div><div><div class="stat-value" id="bs-features">8</div><div class="stat-label">Features</div></div></div>
+    <div class="stat-card"><div class="stat-icon">⏱</div><div><div class="stat-value" id="bs-duration" style="font-size:14px; color:var(--text2)">—</div><div class="stat-label">Duration</div></div></div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+      <button onclick="exportCSV()" style="background:var(--surface2); border:1px solid var(--border2); color:var(--text2); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-family:'DM Sans',sans-serif; display:flex; align-items:center; gap:6px;">
+        ⬇ Export CSV
+      </button>
+    </div>
+  </div>
+
+  <!-- Tables area -->
+  <div style="flex:1; overflow-y:auto; padding:20px 24px; display:flex; flex-direction:column; gap:20px;">
+
+    <!-- Feature Stats Table -->
+    <div id="batchFeatureTable" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div style="font-size:13px; font-weight:700;">Feature Statistics</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:11px; color:var(--text3);">Sort by:</span>
+          <select id="featureSortSelect" onchange="renderFeatureStats()" style="background:var(--surface2); border:1px solid var(--border2); color:var(--text); padding:4px 8px; border-radius:6px; font-size:12px; outline:none;">
+            <option value="enabled-desc">Enabled (high→low)</option>
+            <option value="enabled-asc">Enabled (low→high)</option>
+            <option value="name">Name A→Z</option>
+          </select>
+        </div>
+      </div>
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden;">
+        <table style="width:100%; border-collapse:collapse;">
+          <thead id="featureStatsThead"></thead>
+          <tbody id="featureStatsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Game Detail Table -->
+    <div id="batchGameTable" style="display:none;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+        <div style="font-size:13px; font-weight:700;">Game Detail</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="gameFilterSelect" onchange="renderGameTable()" style="background:var(--surface2); border:1px solid var(--border2); color:var(--text); padding:4px 8px; border-radius:6px; font-size:12px; outline:none;">
+            <option value="all">All Games</option>
+            <option value="success">Success only</option>
+            <option value="failed">Failed only</option>
+          </select>
+          <input id="gameSearchInput" oninput="renderGameTable()" placeholder="Search gameID..." style="background:var(--surface2); border:1px solid var(--border2); color:var(--text); padding:5px 10px; border-radius:6px; font-size:12px; outline:none; width:160px;" />
+        </div>
+      </div>
+      <div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; overflow:hidden; overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; min-width:700px;">
+          <thead id="gameDetailThead"></thead>
+          <tbody id="gameDetailBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="batchEmptyState" class="empty-state" style="flex:1;">
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">No analysis yet</div>
+      <div class="empty-sub">Enter path to your games.txt file<br>and click Run Analysis</div>
+    </div>
+
+  </div>
+</div><!-- /tool-batch-stats -->
+
+<!-- ═══════════════════════════════════════════════════════════════
+     TOOL: GAME LAUNCHING PIPELINE
+═══════════════════════════════════════════════════════════════ -->
+<div id="tool-pipeline" class="tool-panel" style="display:none;">
+
+  <!-- Top bar: Sheet URL + Fetch + Auth -->
+  <div class="pl-topbar">
+    <div class="pl-sheet-row">
+      <span class="pl-sheet-lbl">🗒 Sheet URL</span>
+      <input class="pl-sheet-input" id="pl-sheet-url"
+        placeholder="https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/..."
+        onkeydown="if(event.key==='Enter')PipelinePanel.fetchData()" />
+      <button class="pl-fetch-btn" id="pl-fetch-btn" onclick="PipelinePanel.fetchData()">
+        ⬇ Fetch
+      </button>
+      <button class="pl-auth-btn" id="pl-auth-btn" onclick="document.getElementById('pl-login-overlay').style.display='flex'">
+        <svg width="14" height="14" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        <span id="pl-auth-lbl">Sign in with Google</span>
+      </button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="pl-fetched-lbl" id="pl-fetched-lbl"></span>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="pl-status-bar" id="pl-status-bar"></div>
+
+  <!-- Sheet tabs -->
+  <div class="pl-tabs">
+    <button class="pl-tab-btn active" id="pl-tab-release2026" onclick="PipelinePanel.switchTab('release2026')">📋 2026 Launch</button>
+    <button class="pl-tab-btn" id="pl-tab-release2025" onclick="PipelinePanel.switchTab('release2025')">📋 2025 Launch</button>
+    <button class="pl-tab-btn" id="pl-tab-close2026" onclick="PipelinePanel.switchTab('close2026')">🔒 2026 Closed</button>
+    <button class="pl-tab-btn" id="pl-tab-close2025" onclick="PipelinePanel.switchTab('close2025')">🔒 2025 Closed</button>
+  </div>
+
+  <!-- ▼ v3.0: Inner view switcher (Stats ↔ Detail) ▼ -->
+  <div class="pl-view-tabs" id="pl-view-tabs">
+    <button class="pl-vtab" id="pl-vtab-stats" onclick="PipelinePanel.switchView('stats')">
+      📊 Thống kê
+    </button>
+    <button class="pl-vtab active" id="pl-vtab-detail" onclick="PipelinePanel.switchView('detail')">
+      📋 Chi tiết
+    </button>
+  </div>
+  <!-- ▲ end inner view switcher ▲ -->
+
+  <!-- ▼ v3.0: Stats view (hidden by default) ▼ -->
+  <div id="pl-stats-content"></div>
+  <!-- ▲ end stats view ▲ -->
+
+  <!-- ▼ v3.0: Detail view wrapper ▼ -->
+  <div id="pl-detail-content" class="active">
+
+  <!-- Controls: Search, dropdowns, status filters -->
+  <div class="pl-controls">
+    <div class="pl-search">
+      <span style="color:var(--text3);font-size:12px;">🔍</span>
+      <input id="pl-search" placeholder="Search game, alias…" oninput="PipelinePanel.applyFilters()" />
+    </div>
+    <select class="pl-sel" id="pl-owner-sel" onchange="PipelinePanel.applyFilters()"><option value="">All Owners</option></select>
+    <select class="pl-sel" id="pl-mkt-sel" onchange="PipelinePanel.applyFilters()"><option value="">All Markets</option></select>
+    <div class="pl-ctrl-div"></div>
+    <button class="pl-fb active" id="pl-fb-all"         onclick="PipelinePanel.setStatusFilter('all')">All</button>
+    <button class="pl-fb"        id="pl-fb-On Process"  onclick="PipelinePanel.setStatusFilter('On Process')">On Process</button>
+    <button class="pl-fb"        id="pl-fb-Released"    onclick="PipelinePanel.setStatusFilter('Released')">Released</button>
+    <button class="pl-fb"        id="pl-fb-Terminated"  onclick="PipelinePanel.setStatusFilter('Terminated')">Terminated</button>
+    <button class="pl-fb"        id="pl-fb-Pending"     onclick="PipelinePanel.setStatusFilter('Pending')">Pending</button>
+    <div class="pl-ctrl-div"></div>
+    <!-- ▼ v2.0: Date Range Filter (FR-05) ▼ -->
+    <span class="pl-date-sep">📅 Từ</span>
+    <input type="date" id="pl-date-from" class="pl-date-input"
+      aria-label="Start date filter"
+      onchange="PipelinePanel.setDateFilter()" />
+    <span class="pl-date-sep">đến</span>
+    <input type="date" id="pl-date-to" class="pl-date-input"
+      aria-label="End date filter"
+      onchange="PipelinePanel.setDateFilter()" />
+    <button class="pl-clear-date" id="pl-clear-date"
+      onclick="PipelinePanel.clearDateFilter()">✕ Clear</button>
+    <div class="pl-date-warn" id="pl-date-warn">⚠️ End date phải sau start date</div>
+    <!-- ▲ end date filter ▲ -->
+    <div class="pl-ctrl-div"></div>
+    <span class="pl-count" id="pl-count">0 games</span>
+  </div>
+
+  <!-- Main content -->
+  <div class="pl-content-wrap">
+    <div id="pl-content"></div>
+  </div>
+
+  </div><!-- /pl-detail-content -->
+
+  <!-- Loading overlay (blocks all interaction during fetch) -->
+  <div class="pl-loading-overlay" id="pl-loading-overlay">
+    <div class="pl-spinner"></div>
+    <div class="pl-loading-msg" id="pl-loading-msg">Fetching data…</div>
+  </div>
+
+
+</div><!-- /tool-pipeline -->
+
+</div><!-- /app-content -->
+</div><!-- /app-body -->
+</div><!-- /app-shell -->
+
+<script>
+// ── PLATFORM SVG ICONS ────────────────────────────────────────────────────────
+const ANDROID_SVG = `<svg width="13" height="14" viewBox="0 0 24 26" xmlns="http://www.w3.org/2000/svg"><path fill="#3DDC84" d="M15.2 2.4 16.7.1c.2-.3.1-.6-.2-.8-.3-.2-.6-.1-.8.2l-1.6 2.4A7.8 7.8 0 0 0 12 1.6c-.8 0-1.5.1-2.1.3L8.3-.5C8.1-.8 7.8-.9 7.5-.7c-.3.2-.4.5-.2.8L8.8 2.4C7 3.4 5.8 5.2 5.7 7.3h12.6C18.2 5.2 17 3.4 15.2 2.4zM9.5 5.6a.7.7 0 1 1 0-1.4.7.7 0 0 1 0 1.4zm5 0a.7.7 0 1 1 0-1.4.7.7 0 0 1 0 1.4z"/><path fill="#3DDC84" d="M5.7 8.3v11c0 .8.7 1.5 1.5 1.5H8v3.3c0 1.3 1 2.3 2.3 2.3s2.3-1 2.3-2.3v-3.3h.8v3.3c0 1.3 1 2.3 2.3 2.3s2.3-1 2.3-2.3v-3.3h.8c.8 0 1.5-.7 1.5-1.5V8.3H5.7z"/><path fill="#3DDC84" d="M2.3 8.6C1 8.6 0 9.6 0 10.9v7.2C0 19.4 1 20.4 2.3 20.4s2.3-1 2.3-2.3v-7.2c0-1.3-1-2.3-2.3-2.3zm19.4 0c-1.3 0-2.3 1-2.3 2.3v7.2c0 1.3 1 2.3 2.3 2.3s2.3-1 2.3-2.3v-7.2c0-1.3-1-2.3-2.3-2.3z"/></svg>`;
+const APPLE_SVG = `<svg width="12" height="14" viewBox="0 0 814 1000" xmlns="http://www.w3.org/2000/svg"><path fill="#d0d4f0" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-155.5-127.5c-43-81.7-87-208.2-87-327.7 0-206.3 135.2-314.9 268.6-314.9 37.5 0 103.7 12.5 139.7 12.5 34.7 0 99.3-12.5 160.6-12.5 33.1 0 135.6 3.2 204.1 98.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>`;
+
+function androidIcon(size=13) {
+  return `<svg width="${size}" height="${Math.round(size*1.08)}" viewBox="0 0 24 26" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M15.2 2.4 16.7.1c.2-.3.1-.6-.2-.8-.3-.2-.6-.1-.8.2l-1.6 2.4A7.8 7.8 0 0 0 12 1.6c-.8 0-1.5.1-2.1.3L8.3-.5C8.1-.8 7.8-.9 7.5-.7c-.3.2-.4.5-.2.8L8.8 2.4C7 3.4 5.8 5.2 5.7 7.3h12.6C18.2 5.2 17 3.4 15.2 2.4zM9.5 5.6a.7.7 0 1 1 0-1.4.7.7 0 0 1 0 1.4zm5 0a.7.7 0 1 1 0-1.4.7.7 0 0 1 0 1.4z"/><path fill="currentColor" d="M5.7 8.3v11c0 .8.7 1.5 1.5 1.5H8v3.3c0 1.3 1 2.3 2.3 2.3s2.3-1 2.3-2.3v-3.3h.8v3.3c0 1.3 1 2.3 2.3 2.3s2.3-1 2.3-2.3v-3.3h.8c.8 0 1.5-.7 1.5-1.5V8.3H5.7z"/><path fill="currentColor" d="M2.3 8.6C1 8.6 0 9.6 0 10.9v7.2C0 19.4 1 20.4 2.3 20.4s2.3-1 2.3-2.3v-7.2c0-1.3-1-2.3-2.3-2.3zm19.4 0c-1.3 0-2.3 1-2.3 2.3v7.2c0 1.3 1 2.3 2.3 2.3s2.3-1 2.3-2.3v-7.2c0-1.3-1-2.3-2.3-2.3z"/></svg>`;
+}
+function appleIcon(size=12) {
+  return `<svg width="${size}" height="${Math.round(size*1.17)}" viewBox="0 0 814 1000" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-37.5-155.5-127.5c-43-81.7-87-208.2-87-327.7 0-206.3 135.2-314.9 268.6-314.9 37.5 0 103.7 12.5 139.7 12.5 34.7 0 99.3-12.5 160.6-12.5 33.1 0 135.6 3.2 204.1 98.2zm-234-181.5c31.1-36.9 53.1-88.1 53.1-139.3 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.6-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 135.5-71.3z"/></svg>`;
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const PROXY = 'http://localhost:8765';
+
+function escapeHTML(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function kv(k, v, cls='') {
+  return `<div class="kv-row"><div class="kv-key">${k}</div><div class="kv-val ${cls}">${v ?? '—'}</div></div>`;
+}
+
+// Parse country input string → array of uppercase codes
+function parseCountries(raw) {
+  if (!raw || !raw.trim()) return [];
+  return raw.split(';').map(s => s.trim().toUpperCase()).filter(Boolean);
+}
+
+// Render preview pills bên cạnh country input (SDK Config Analyzer)
+function renderCountryPreview() {
+  const raw = document.getElementById('countryInput')?.value || '';
+  const codes = parseCountries(raw);
+  const el = document.getElementById('countryPreviewPills');
+  if (!el) return;
+  el.innerHTML = codes.map(c =>
+    `<span style="background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:2px 9px;font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;">${c}</span>`
+  ).join('');
+}
+
+// Render preview pills cho Batch section
+function renderBatchCountryPreview() {
+  const raw = document.getElementById('batchCountryInput')?.value || '';
+  const codes = parseCountries(raw);
+  const el = document.getElementById('batchCountryPreviewPills');
+  if (!el) return;
+  el.innerHTML = codes.map(c =>
+    `<span style="background:var(--surface2);border:1px solid var(--border2);border-radius:12px;padding:2px 9px;font-size:11px;color:var(--text2);font-family:'JetBrains Mono',monospace;">${c}</span>`
+  ).join('');
+}
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+// currentConfig = {
+//   android: { default: {...}, VN: {...}, TH: {...} },
+//   ios:     { default: {...}, VN: {...}, TH: {...} }
+// }
+let currentConfig = null;
+let currentGameId = '';
+let currentCountries = [];          // danh sách country codes đang active
+let recentGames = ['demovn', 'zalo', 'arena4vn'];
+let selectedFeature = null;
+let selectedDetailPlatform = 'android';
+let selectedDetailCountry = 'default';  // country đang xem trong detail panel
+
+// ── TOOL NAV ──────────────────────────────────────────────────────────────────
+function selectTool(tool, el) {
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+  if (el) el.classList.add('active');
+  document.querySelectorAll('.tool-panel').forEach(p => p.style.display = 'none');
+  const panel = document.getElementById('tool-' + tool);
+  if (panel) panel.style.display = 'flex';
+}
+
+// ── FEATURE DEFINITIONS ───────────────────────────────────────────────────────
+const FEATURES = [
+  { key: 'bann', name: 'Ban Check', icon: '🛡️', color: '#f87171',
+    isEnabled: d => d?.banned === 'true',
+    summary: d => d ? `returnCode: ${d?.returnCode ?? '—'}, counter: ${d?.counter ?? '—'}` : '—' },
+  { key: 'notify', name: 'Notify', icon: '🔔', color: '#fbbf24',
+    isEnabled: d => d?.show === 'true',
+    summary: d => d?.notify ? d.notify.substring(0,50)+(d.notify.length>50?'…':'') : 'No message' },
+  { key: 'local_push', name: 'Local Push', icon: '📲', color: '#fb923c',
+    isEnabled: d => Array.isArray(d?.data) && d.data.length > 0,
+    summary: d => `${d?.data?.length || 0} push items scheduled` },
+  { key: 'login_channel', name: 'Login Channel', icon: '🔐', color: '#60a5fa',
+    isEnabled: d => Array.isArray(d?.list) && d.list.length > 0,
+    summary: d => {
+      const names = d?.list?.map(x => x.name).join(', ') || '';
+      return `${d?.list?.length || 0} channels — ${names}`;
+    }},
+  { key: 'translate', name: 'Translate', icon: '🌐', color: '#34d399',
+    isEnabled: d => d?.type === 1,
+    summary: d => `type: ${d?.type ?? '—'}, tracklog: ${d?.tracklog ?? '—'}` },
+  { key: 'secure_account_status', name: 'Secure Account', icon: '🔒', color: '#a78bfa',
+    isEnabled: d => d === 1,
+    summary: d => `status: ${d ?? '—'}` },
+  { key: 'vn_policy_13', name: 'VN Policy 13', icon: '📜', color: '#c084fc',
+    isEnabled: d => d?.show === 1,
+    summary: d => `${d?.links?.length || 0} policy links` },
+  { key: 'appsflyer', name: 'AppsFlyer', icon: '📊', color: '#2dd4bf',
+    isEnabled: d => d && Object.keys(d).length > 0,
+    summary: d => `session time: ${d?.appsflyer_time_session ?? '—'}s` },
+];
+
+// ── RECENT PILLS ──────────────────────────────────────────────────────────────
+function renderRecentPills() {
+  const container = document.getElementById('recentPills');
+  container.innerHTML = '<span class="recent-label">Recent:</span>';
+  recentGames.forEach(g => {
+    const pill = document.createElement('span');
+    pill.className = 'pill';
+    pill.textContent = g;
+    pill.onclick = () => { document.getElementById('gameIdInput').value = g; fetchConfig(); };
+    container.appendChild(pill);
+  });
+}
+
+function setStatus(type, msg) {
+  const bar = document.getElementById('statusBar');
+  bar.className = `status-bar ${type}`;
+  if (type === 'loading') bar.innerHTML = `<div class="spinner"></div> ${msg}`;
+  else if (type === 'error') bar.innerHTML = `⚠️ ${msg}`;
+  else if (type === 'success') bar.innerHTML = `✅ ${msg}`;
+  else bar.className = 'status-bar';
+}
+
+// ── FETCH CONFIG (dual platform + multi country) ───────────────────────────────
+async function fetchConfig() {
+  const gameId = document.getElementById('gameIdInput').value.trim();
+  if (!gameId) { setStatus('error', 'Please enter a Game ID'); return; }
+
+  const countryRaw = document.getElementById('countryInput')?.value || '';
+  const countries = parseCountries(countryRaw);  // [] nếu không nhập
+  currentCountries = countries;
+  selectedDetailCountry = 'default';
+
+  const btn = document.getElementById('fetchBtn');
+  btn.disabled = true;
+
+  const countryLabel = countries.length ? ` + ${countries.length} countr${countries.length>1?'ies':'y'}` : '';
+  setStatus('loading', `Fetching Android + iOS${countryLabel} config for "${gameId}"…`);
+
+  // fetch một platform + country combination
+  async function fetchOne(platform, country) {
+    let url = `${PROXY}/api/config?gameId=${encodeURIComponent(gameId)}&platform=${platform}`;
+    if (country) url += `&country=${encodeURIComponent(country)}`;
+    try {
+      const res = await fetch(url);
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error || 'Unknown error');
+      return { data: json.data, error: null };
+    } catch(e) {
+      if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+        throw new Error(`Cannot connect to proxy at ${PROXY}\n\nRun: python3 proxy.py\n\n${e.message}`);
+      }
+      return { data: null, error: e.message };
+    }
+  }
+
+  try {
+    // Tạo danh sách tất cả combinations cần fetch
+    // Luôn fetch "default" (không có country), sau đó fetch thêm từng country
+    const slots = ['default', ...countries];
+    const platforms = ['android', 'ios'];
+
+    // Fetch tất cả song song
+    const allResults = await Promise.all(
+      platforms.flatMap(p => slots.map(slot => fetchOne(p, slot === 'default' ? null : slot).then(r => ({ p, slot, ...r }))))
+    );
+
+    // Build currentConfig = { android: { default: {...}, VN: {...} }, ios: { default: {...}, VN: {...} } }
+    const config = { android: {}, ios: {} };
+    for (const r of allResults) {
+      config[r.p][r.slot] = r.data;
+    }
+
+    currentConfig = config;
+    currentGameId = gameId;
+
+    if (!recentGames.includes(gameId)) {
+      recentGames.unshift(gameId);
+      if (recentGames.length > 5) recentGames.pop();
+      renderRecentPills();
+    }
+
+    const keyCount = Object.keys(config.android.default || config.ios.default || {}).length;
+    const successLabel = countries.length
+      ? `Android + iOS × [default${countries.length?', '+countries.join(', '):''}]`
+      : 'Android + iOS';
+    setStatus('success', `Config loaded for "${gameId}" (${successLabel}) — ${keyCount} keys`);
+    document.getElementById('timestamp').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+    renderAll();
+  } catch(e) {
+    showDetailedError(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function showDetailedError(msg) {
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status-bar error';
+  bar.style.flexDirection = 'column';
+  bar.style.alignItems = 'flex-start';
+  bar.style.gap = '8px';
+  bar.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;font-weight:600;">⚠️ Error</div>
+    <pre style="display:block;background:rgba(248,113,113,0.05);border:1px solid rgba(248,113,113,0.2);border-radius:6px;padding:10px;font-size:11px;white-space:pre-wrap;width:100%;color:var(--red);max-height:180px;overflow:auto;margin:0;">${escapeHTML(msg)}</pre>
+    <div style="font-size:11px;color:var(--text3);">💡 Xem terminal đang chạy proxy.py để biết thêm chi tiết</div>`;
+}
+
+function togglePaste() {
+  document.getElementById('pasteArea').classList.toggle('open');
+}
+
+function parseManual() {
+  const raw = document.getElementById('pasteInput').value.trim();
+  try {
+    const parsed = JSON.parse(raw);
+    // Support flat, { android, ios }, or new { android: { default, VN }, ios: {...} }
+    if (parsed.android?.default !== undefined || parsed.ios?.default !== undefined) {
+      currentConfig = parsed;
+    } else if (parsed.android || parsed.ios) {
+      currentConfig = {
+        android: { default: parsed.android || parsed },
+        ios: { default: parsed.ios || parsed }
+      };
+    } else {
+      currentConfig = { android: { default: parsed }, ios: { default: parsed } };
+    }
+    currentCountries = [];
+    selectedDetailCountry = 'default';
+    currentGameId = document.getElementById('gameIdInput').value.trim() || 'manual';
+    setStatus('success', 'JSON parsed successfully');
+    document.getElementById('timestamp').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+    renderAll();
+  } catch(e) {
+    setStatus('error', 'Invalid JSON: ' + e.message);
+  }
+}
+
+// ── RENDER ALL ────────────────────────────────────────────────────────────────
+function renderAll() {
+  renderSummary();
+  renderFeatureList();
+  document.getElementById('detailPanel').innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">👈</div>
+      <div class="empty-title">Select a feature</div>
+      <div class="empty-sub">Click any feature card on the left to view details</div>
+    </div>`;
+}
+
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  bar.classList.add('visible');
+  document.getElementById('summaryGameId').textContent = currentGameId;
+  let enabled = 0, disabled = 0;
+  FEATURES.forEach(f => {
+    // OR logic across all platforms + all countries
+    const slots = ['default', ...currentCountries];
+    const anyOn = slots.some(slot =>
+      f.isEnabled(currentConfig?.android?.[slot]?.[f.key]) ||
+      f.isEnabled(currentConfig?.ios?.[slot]?.[f.key])
+    );
+    if (anyOn) enabled++; else disabled++;
+  });
+  document.getElementById('enabledCount').textContent = enabled;
+  document.getElementById('disabledCount').textContent = disabled;
+  document.getElementById('totalCount').textContent = FEATURES.length;
+  const ts = currentConfig?.android?.default?.login_channel?.timestamp
+          || currentConfig?.ios?.default?.login_channel?.timestamp;
+  if (ts) {
+    document.getElementById('configTimestamp').textContent =
+      new Date(ts * 1000).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  }
+}
+
+// ── FEATURE LIST ──────────────────────────────────────────────────────────────
+function renderFeatureList() {
+  const list = document.getElementById('featureList');
+  list.innerHTML = '';
+  const slots = ['default', ...currentCountries];
+
+  FEATURES.forEach((f, i) => {
+    // Lấy data từ default platform (để hiển thị summary)
+    const aDefault = currentConfig?.android?.default?.[f.key];
+    const iDefault = currentConfig?.ios?.default?.[f.key];
+
+    // OR logic across all slots cho badge ON/OFF tổng
+    const aEnabled = slots.some(s => f.isEnabled(currentConfig?.android?.[s]?.[f.key]));
+    const iEnabled = slots.some(s => f.isEnabled(currentConfig?.ios?.[s]?.[f.key]));
+    const anyEnabled = aEnabled || iEnabled;
+
+    const aBadge = `<span style="display:inline-flex;align-items:center;gap:3px;color:${aEnabled?'#3DDC84':'#3d4270'};" title="Android ${aEnabled?'ON':'OFF'}">${androidIcon(11)}</span>`;
+    const iBadge = `<span style="display:inline-flex;align-items:center;gap:3px;color:${iEnabled?'#d0d4f0':'#3d4270'};" title="iOS ${iEnabled?'ON':'OFF'}">${appleIcon(10)}</span>`;
+
+    // Country pills nhỏ trên card — chỉ hiện khi có country
+    let countryLine = '';
+    if (currentCountries.length > 0) {
+      const countryPills = currentCountries.map(c => {
+        const caOn = f.isEnabled(currentConfig?.android?.[c]?.[f.key]);
+        const ciOn = f.isEnabled(currentConfig?.ios?.[c]?.[f.key]);
+        const cOn = caOn || ciOn;
+        return `<span style="font-size:10px;padding:1px 6px;border-radius:8px;font-family:'JetBrains Mono',monospace;background:${cOn?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.08)'};border:1px solid ${cOn?'rgba(74,222,128,0.25)':'rgba(248,113,113,0.2)'};color:${cOn?'var(--green)':'var(--text3)'};">${c}</span>`;
+      }).join('');
+      countryLine = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px;">${countryPills}</div>`;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'feature-card';
+    card.style.animationDelay = `${i * 0.04}s`;
+    card.innerHTML = `
+      <div class="card-header">
+        <div class="card-title">
+          <div class="card-icon" style="background:${f.color}22;">${f.icon}</div>
+          ${f.name}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="badge ${anyEnabled?'badge-on':'badge-off'}">${anyEnabled?'ON':'OFF'}</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+        <div class="card-summary" style="font-size:11px;">${f.summary(aDefault || iDefault)}</div>
+        <div style="display:inline-flex;align-items:center;gap:5px;flex-shrink:0;margin-left:8px;">${aBadge}${iBadge}</div>
+      </div>
+      ${countryLine}`;
+    card.onclick = () => {
+      document.querySelectorAll('.feature-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      selectFeature(f.key);
+    };
+    list.appendChild(card);
+  });
+}
+
+// ── SELECT FEATURE ────────────────────────────────────────────────────────────
+function selectFeature(key, platform, country) {
+  selectedFeature = key;
+  if (platform) selectedDetailPlatform = platform;
+  if (country !== undefined) selectedDetailCountry = country;
+
+  const f = FEATURES.find(x => x.key === key);
+  const slots = ['default', ...currentCountries];
+  const curPlatform = selectedDetailPlatform;
+  const curCountry = selectedDetailCountry;
+
+  // Lấy data cho tab hiện tại
+  const curData = currentConfig?.[curPlatform]?.[curCountry]?.[key];
+
+  // Tính enabled trạng thái cho từng platform (OR across all countries)
+  const aEnabled = slots.some(s => f.isEnabled(currentConfig?.android?.[s]?.[key]));
+  const iEnabled = slots.some(s => f.isEnabled(currentConfig?.ios?.[s]?.[key]));
+  const anyEnabled = aEnabled || iEnabled;
+
+  // enabled cho platform đang chọn ở country đang chọn
+  const curEnabled = f.isEnabled(curData);
+
+  const tabStyle = (active) => active
+    ? 'background:rgba(108,99,255,0.15);border-bottom:2px solid var(--accent);color:#fff;'
+    : 'background:transparent;border-bottom:2px solid transparent;color:var(--text3);';
+
+  // Build country selector bar
+  let countryBar = '';
+  if (currentCountries.length > 0) {
+    const countryBtns = ['default', ...currentCountries].map(c => {
+      const cData = currentConfig?.[curPlatform]?.[c]?.[key];
+      const cEnabled = f.isEnabled(cData);
+      const isActive = c === curCountry;
+      const label = c === 'default' ? '🌐 Default' : c;
+      return `<button onclick="selectFeature('${key}','${curPlatform}','${c}')"
+        style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border:1px solid ${isActive?'var(--accent)':'var(--border)'};cursor:pointer;font-size:12px;font-weight:${isActive?'600':'400'};font-family:'JetBrains Mono',monospace;border-radius:20px;transition:all .15s;background:${isActive?'rgba(108,99,255,0.15)':'transparent'};color:${isActive?'#fff':'var(--text3)'};">
+        ${label}
+        <span style="width:6px;height:6px;border-radius:50%;background:${cEnabled?'var(--green)':'var(--red)'};display:inline-block;"></span>
+      </button>`;
+    }).join('');
+    countryBar = `
+      <div style="padding:10px 20px 0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.6px;margin-right:4px;">🌍</span>
+        ${countryBtns}
+      </div>`;
+  }
+
+  const panel = document.getElementById('detailPanel');
+  panel.innerHTML = `
+    <div class="detail-content">
+      <div class="detail-header">
+        <div class="detail-title">
+          <div class="detail-title-icon" style="background:${f.color}22;font-size:20px;">${f.icon}</div>
+          ${f.name}
+          <span class="badge ${anyEnabled?'badge-on':'badge-off'}" style="font-size:13px;">${anyEnabled?'ENABLED':'DISABLED'}</span>
+        </div>
+        <div style="display:flex;gap:2px;margin-top:14px;border-bottom:1px solid var(--border);">
+          <button onclick="selectFeature('${key}','android','${curCountry}')"
+            style="display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border:none;cursor:pointer;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;border-radius:6px 6px 0 0;transition:all .15s;${tabStyle(curPlatform==='android')}">
+            <span style="color:#3DDC84;">${ANDROID_SVG}</span> Android
+            <span class="badge ${aEnabled?'badge-on':'badge-off'}" style="font-size:10px;padding:1px 6px;">${aEnabled?'ON':'OFF'}</span>
+          </button>
+          <button onclick="selectFeature('${key}','ios','${curCountry}')"
+            style="display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border:none;cursor:pointer;font-size:13px;font-weight:500;font-family:'DM Sans',sans-serif;border-radius:6px 6px 0 0;transition:all .15s;${tabStyle(curPlatform==='ios')}">
+            <span style="color:#d0d4f0;">${APPLE_SVG}</span> iOS
+            <span class="badge ${iEnabled?'badge-on':'badge-off'}" style="font-size:10px;padding:1px 6px;">${iEnabled?'ON':'OFF'}</span>
+          </button>
+        </div>
+        ${countryBar}
+      </div>
+      ${currentCountries.length > 0 ? `
+        <div style="display:flex;align-items:center;gap:6px;padding:8px 20px;background:${curEnabled?'rgba(74,222,128,0.05)':'rgba(248,113,113,0.05)'};border-bottom:1px solid var(--border);">
+          <span style="font-size:12px;color:var(--text3);">Viewing:</span>
+          <span style="font-size:12px;font-weight:600;color:var(--text2);font-family:'JetBrains Mono',monospace;">${curCountry === 'default' ? 'Default (no country)' : curCountry}</span>
+          <span style="margin-left:4px;" class="badge ${curEnabled?'badge-on':'badge-off'}" style="font-size:11px;">${curEnabled?'ON':'OFF'}</span>
+        </div>` : ''}
+      ${renderFeatureDetail(key, curData, f, curPlatform)}
+      <div class="section">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="raw-toggle" onclick="toggleRaw('raw_fd')">▶ Raw JSON</button>
+          <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('raw_fd').textContent)">Copy</button>
+        </div>
+        <pre id="raw_fd">${escapeHTML(JSON.stringify(curData, null, 2))}</pre>
+      </div>
+    </div>`;
+}
+
+// ── FEATURE DETAIL RENDERERS ──────────────────────────────────────────────────
+function renderFeatureDetail(key, data, f, platform) {
+  if (!data && data !== 0) return `<div class="section"><div style="color:var(--text3);font-size:13px;">No configuration found for this feature.</div></div>`;
+
+  const channelColors = { AP:'#4f46e5',GG:'#dc2626',FB:'#1d4ed8',ZM:'#0891b2',EM:'#059669',GGID:'#16a34a',GU:'#9333ea',PA:'#d97706',RA:'#db2777' };
+
+  switch(key) {
+    case 'bann': return `
+      <div class="section">
+        <div class="section-title">Configuration</div>
+        <div class="kv-table">
+          ${kv('Banned', data.banned==='true'?'🚫 true (ban active)':'✅ false (no ban)')}
+          ${kv('Return Code', data.returnCode, 'mono')}
+          ${kv('Button Label', data.button)}
+          ${kv('Counter', (data.counter??'—')+(parseInt(data.counter)>100000?' ⚠️ high value':''), 'mono')}
+          ${kv('Package', data.package)}
+          ${kv('Notify Text', data.notify)}
+          ${kv('Update URL', data.url, 'url')}
+        </div>
+      </div>`;
+
+    case 'notify': return `
+      <div class="section">
+        <div class="section-title">Configuration</div>
+        <div class="kv-table">
+          ${kv('Show', data.show==='true'?'✅ true':'❌ false', 'mono')}
+          ${kv('Message', data.notify||(data.notify===''?'(empty)':'—'))}
+        </div>
+      </div>`;
+
+    case 'local_push': return `
+      <div class="section">
+        <div class="section-title">Configuration</div>
+        <div class="kv-table">
+          ${kv('Update Time', data.update_time, 'mono')}
+          ${kv('Items Count', (data.data?.length||0).toString(), 'mono')}
+        </div>
+      </div>
+      ${!data.data?.length?'<div style="color:var(--text3);font-size:13px;padding:12px 0;">No push items configured.</div>':''}`;
+
+    case 'login_channel': {
+      const lines = {};
+      (data.list||[]).forEach(ch => { if(!lines[ch.line]) lines[ch.line]=[]; lines[ch.line].push(ch.name); });
+      const channelGrid = Object.entries(lines).map(([line,chs])=>`
+        <div class="channel-line">
+          <span class="line-label">L${line}</span>
+          ${chs.map(c=>`<span class="channel-pill" style="border-color:${channelColors[c]||'#3d4270'};color:${channelColors[c]||'#8b91c2'}">${c}</span>`).join('')}
+        </div>`).join('');
+      const supportLines = {};
+      (data.support?.list||[]).forEach(ch=>{ if(!supportLines[ch.line]) supportLines[ch.line]=[]; supportLines[ch.line].push(ch.name); });
+      const supportGrid = Object.entries(supportLines).map(([line,chs])=>`
+        <div class="channel-line">
+          <span class="line-label">L${line}</span>
+          ${chs.map(c=>`<span class="channel-pill" style="border-color:${channelColors[c]||'#3d4270'};color:${channelColors[c]||'#8b91c2'}">${c}</span>`).join('')}
+        </div>`).join('');
+      return `
+        <div class="section">
+          <div class="section-title">Login Channels</div>
+          <div class="kv-table" style="margin-bottom:10px;">
+            ${kv('Logo', `<img src="${data.logo_url}" style="height:30px;border-radius:4px;background:#fff;padding:2px;" onerror="this.style.display='none'">`)}
+            ${kv('Align', data.align, 'mono')}
+            ${kv('Timestamp', data.timestamp ? new Date(data.timestamp*1000).toLocaleString() : '—')}
+          </div>
+          <div class="channel-grid" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">${channelGrid||'<span style="color:var(--text3);font-size:12px;">No channels</span>'}</div>
+        </div>
+        <div class="section">
+          <div class="section-title">Support Channels <span class="badge ${data.support?.is_show==='1'?'badge-on':'badge-off'}" style="margin-left:6px;">${data.support?.is_show==='1'?'SHOWN':'HIDDEN'}</span></div>
+          <div class="channel-grid" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;">
+            ${supportGrid||'<span style="color:var(--text3);font-size:12px;">No support channels</span>'}
+          </div>
+        </div>`;
+    }
+
+    case 'translate': {
+      const urlHL = (data.url||'').replace(/\[lang\]/g,'<span class="url-param">[lang]</span>').replace(/\[text\]/g,'<span class="url-param">[text]</span>');
+      return `
+        <div class="section">
+          <div class="section-title">Configuration</div>
+          <div class="kv-table" style="margin-bottom:10px;">
+            ${kv('Type', data.type, 'mono')}
+            ${kv('Tracklog', data.tracklog, 'mono')}
+            ${kv('Object Path', data.object_path, 'mono')}
+            ${kv('Result Path', data.result_path, 'mono')}
+          </div>
+          <div class="section-title">URL Template</div>
+          <div class="url-template">${urlHL}</div>
+        </div>`;
+    }
+
+    case 'secure_account_status': return `
+      <div class="section">
+        <div class="section-title">Configuration</div>
+        <div class="kv-table">
+          ${kv('Status', data===1?'🔒 Enabled (1)':'🔓 Disabled (0)', 'mono')}
+        </div>
+      </div>`;
+
+    case 'vn_policy_13': {
+      const linksHTML = (data.links||[]).map(l=>`
+        <a class="policy-link" href="${l.url}" target="_blank">
+          <span class="policy-link-title">${l.title}</span>
+          <span class="policy-link-arrow">↗</span>
+        </a>`).join('');
+      const curSlot = selectedDetailCountry;
+      const vgaMode = currentConfig?.android?.[curSlot]?.vga_auth_mode?.google
+                   || currentConfig?.ios?.[curSlot]?.vga_auth_mode?.google;
+      return `
+        <div class="section">
+          <div class="section-title">Policy Links</div>
+          ${linksHTML||'<div style="color:var(--text3);font-size:13px;">No links</div>'}
+        </div>
+        <div class="section">
+          <div class="section-title">Dialog Preview</div>
+          <div class="dialog-preview" style="background:${data.dialog?.background_color||'#fff'};color:${data.dialog?.text_color||'#000'};border:1px solid var(--border);">
+            <div class="dialog-title-text">${data.dialog?.title||''}</div>
+            <div class="dialog-agree-text">☑ ${data.dialog?.agreement||''}</div>
+            <div class="dialog-btns">
+              <div class="dialog-btn" style="background:${data.dialog_button_disagree?.background_color};color:${data.dialog_button_disagree?.text_color};border-color:${data.dialog_button_disagree?.border_color}">${data.dialog_button_disagree?.text||'Decline'}</div>
+              <div class="dialog-btn" style="background:${data.dialog_button_agree?.background_color};color:${data.dialog_button_agree?.text_color};border-color:${data.dialog_button_agree?.border_color}">${data.dialog_button_agree?.text||'Agree'}</div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">Auth Mode</div>
+          <div class="kv-table">${kv('VGA Auth Google', vgaMode||'—', 'mono')}</div>
+        </div>`;
+    }
+
+    case 'appsflyer': return `
+      <div class="section">
+        <div class="section-title">Configuration</div>
+        <div class="kv-table">
+          ${kv('Session Time', (data.appsflyer_time_session??'—')+'s', 'mono')}
+        </div>
+      </div>`;
+
+    default:
+      return `<div class="section"><pre style="display:block">${escapeHTML(JSON.stringify(data, null, 2))}</pre></div>`;
+  }
+}
+
+function toggleRaw(id) {
+  const pre = document.getElementById(id);
+  pre.classList.toggle('open');
+  const btn = pre.previousElementSibling.querySelector('.raw-toggle');
+  if (btn) btn.textContent = pre.classList.contains('open') ? '▼ Raw JSON' : '▶ Raw JSON';
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+renderRecentPills();
+document.getElementById('gameIdInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') fetchConfig();
+});
+
+const SAMPLE_JSON = {"bann":{"returnCode":1,"button":"OK","banned":"false","url":"https://itunes.apple.com/vn/app/zalo/id579523206?mt=8","package":"default","notify":"Bạn vui lòng cập nhật phiên bản mới!","counter":"4"},"notify":{"show":"false","notify":""},"local_push":{"update_time":0,"data":[]},"login_channel":{"logo_url":"https://login-tfsea.vnggames.net/images/login_logo.png","align":"center","timestamp":1772124410,"list":[{"name":"AP","index":1,"line":1},{"name":"GG","index":1,"line":2},{"name":"FB","index":1,"line":3},{"name":"ZM","index":1,"line":4},{"name":"GGID","index":2,"line":4},{"name":"GU","index":1,"line":5}],"support":{"is_show":"1","title":"","list":[{"name":"PA","index":1,"line":1},{"name":"RA","index":2,"line":2}]}},"translate":{"type":1,"tracklog":"true","url":"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&dt=t&tl=[lang]&q=[text]","object_path":"0","result_path":"0"},"secure_account_status":0,"force":0,"force_count":5000000,"languages":["en","vi","th","id"],"appsflyer":{"appsflyer_time_session":"5"},"vn_policy_13":{"show":1,"links":[{"url":"https://privacy.vnggames.net/","title":"Chính sách bảo mật","description":""},{"url":"https://policies.vnggames.com/","title":"Điều khoản sử dụng","description":""}],"dialog":{"title":"Để tiếp tục sử dụng trò chơi, vui lòng đọc và đồng ý","agreement":"Tôi đã đọc và đồng ý","background_color":"#ffffff","text_color":"#000000"},"dialog_button_agree":{"text":"Đồng ý","background_color":"#000000","text_color":"#ffffff","border_color":"#000000"},"dialog_button_disagree":{"text":"Từ chối","background_color":"#ffffff","text_color":"#000000","border_color":"#000000"}},"vga_auth_mode":{"google":"select_account"}};
+
+setTimeout(() => {
+  currentConfig = { android: { default: SAMPLE_JSON }, ios: { default: SAMPLE_JSON } };
+  currentCountries = [];
+  currentGameId = 'sample';
+  document.getElementById('gameIdInput').value = 'sample';
+  setStatus('success', 'Sample config loaded — enter a real Game ID to fetch live data');
+  document.getElementById('timestamp').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+  renderAll();
+}, 300);
+
+// ── BATCH STATS ────────────────────────────────────────────────────────────────
+let batchJobId = null;
+let batchPollInterval = null;
+let batchJobData = null;
+let batchStartTime = null;
+let batchTimerInterval = null;
+
+const FEATURE_COLS = [
+  {key:'bann',label:'Ban'},{key:'notify',label:'Notify'},{key:'local_push',label:'Push'},
+  {key:'login_channel',label:'Login'},{key:'translate',label:'Trans'},
+  {key:'secure_account_status',label:'Secure'},{key:'vn_policy_13',label:'Policy'},{key:'appsflyer',label:'AF'},
+];
+
+async function startBatch() {
+  const filepath = document.getElementById('batchFilePath').value.trim();
+  if (!filepath) { showBatchError('Please enter a file path'); return; }
+
+  const countryRaw = document.getElementById('batchCountryInput')?.value || '';
+  const countries = parseCountries(countryRaw);
+
+  document.getElementById('batchRunBtn').disabled = true;
+  document.getElementById('batchError').style.display = 'none';
+  document.getElementById('batchEmptyState').style.display = 'flex';
+  document.getElementById('batchFeatureTable').style.display = 'none';
+  document.getElementById('batchGameTable').style.display = 'none';
+  document.getElementById('batchSummary').classList.remove('visible');
+  document.getElementById('batchProgress').style.display = 'block';
+  updateProgress(0, 0, 0);
+  batchStartTime = Date.now();
+  clearInterval(batchTimerInterval);
+  batchTimerInterval = setInterval(() => {
+    document.getElementById('batchTimer').textContent = `⏱ ${((Date.now()-batchStartTime)/1000).toFixed(1)}s`;
+  }, 200);
+  try {
+    const res = await fetch(`${PROXY}/api/batch`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ filepath, countries })
+    });
+    const data = await res.json();
+    if (!data.jobId) { showBatchError(data.error||'Failed to start job'); return; }
+    batchJobId = data.jobId;
+    const cLabel = countries.length ? ` + countries: ${countries.join(', ')}` : '';
+    document.getElementById('batchStatusMsg').textContent = `Job ${data.jobId} — ${data.total} games${cLabel}`;
+    batchPollInterval = setInterval(pollBatch, 800);
+  } catch(e) {
+    showBatchError(`Cannot connect to proxy.\nRun: python3 proxy.py\n\n${e.message}`);
+    document.getElementById('batchRunBtn').disabled = false;
+    clearInterval(batchTimerInterval);
+  }
+}
+
+async function pollBatch() {
+  try {
+    const res = await fetch(`${PROXY}/api/batch/status?jobId=${batchJobId}`);
+    const job = await res.json();
+    batchJobData = job;
+    updateProgress(job.completed, job.total, job.failed);
+    if (job.stats && Object.keys(job.stats).length) {
+      renderBatchSummary(job);
+      renderFeatureStats(job.stats, job.total);
+      renderGameTable(job.results);
+    }
+    if (job.status === 'done') {
+      clearInterval(batchPollInterval);
+      clearInterval(batchTimerInterval);
+      document.getElementById('batchTimer').textContent = `⏱ ${job.duration}s`;
+      document.getElementById('batchStatusMsg').textContent = `✅ Completed — ${job.completed-job.failed} success, ${job.failed} failed`;
+      document.getElementById('batchRunBtn').disabled = false;
+      document.getElementById('batchEmptyState').style.display = 'none';
+    }
+  } catch(e) { console.error('Poll error:', e); }
+}
+
+function updateProgress(completed, total, failed) {
+  const pct = total > 0 ? Math.round(completed/total*100) : 0;
+  document.getElementById('batchProgressBar').style.width = pct+'%';
+  document.getElementById('batchProgressPct').textContent = pct+'%';
+  document.getElementById('batchProgressLabel').textContent = `${completed} / ${total} games${failed>0?` · ${failed} failed`:''}`;
+}
+
+function renderBatchSummary(job) {
+  document.getElementById('batchSummary').classList.add('visible');
+  document.getElementById('bs-total').textContent = job.total;
+  document.getElementById('bs-ok').textContent = job.completed - job.failed;
+  document.getElementById('bs-fail').textContent = job.failed;
+  document.getElementById('bs-duration').textContent = job.duration ? job.duration+'s' : '—';
+}
+
+function renderFeatureStats(stats, total) {
+  if (!stats) stats = batchJobData?.stats;
+  if (!total) total = batchJobData?.total || 0;
+  if (!stats) return;
+  document.getElementById('batchFeatureTable').style.display = 'block';
+  document.getElementById('batchEmptyState').style.display = 'none';
+
+  const sort = document.getElementById('featureSortSelect')?.value || 'enabled-desc';
+  const entries = Object.values(stats);
+  if (sort==='enabled-desc') entries.sort((a,b)=>b.enabledCount-a.enabledCount);
+  else if (sort==='enabled-asc') entries.sort((a,b)=>a.enabledCount-b.enabledCount);
+  else entries.sort((a,b)=>a.name.localeCompare(b.name));
+
+  const icons = {'Ban Check':'🛡️','Notify':'🔔','Local Push':'📲','Login Channel':'🔐','Translate':'🌐','Secure Account':'🔒','VN Policy 13':'📜','AppsFlyer':'📊'};
+  const countries = batchJobData?.countries || [];
+
+  // ── BUILD THEAD DYNAMICALLY ───────────────────────────────────────────────
+  // Cột: Feature | Enabled (any) | Android | iOS | [VN] [TH] [ID]... | Rate | Bar
+  const thStyle = 'padding:10px 12px;text-align:center;font-weight:600;';
+  const countryThs = countries.map(c =>
+    `<th style="${thStyle}border-left:1px solid var(--border);font-family:'JetBrains Mono',monospace;">🌍 ${c}</th>`
+  ).join('');
+
+  document.getElementById('featureStatsThead').innerHTML = `
+    <tr style="background:var(--surface2);font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;">
+      <th style="padding:10px 16px;text-align:left;font-weight:600;">Feature</th>
+      <th style="${thStyle}">Enabled (any)</th>
+      <th style="${thStyle}display:inline-flex;align-items:center;gap:4px;">
+        <span style="color:#3DDC84;">${androidIcon(11)}</span> Android
+      </th>
+      <th style="${thStyle}">
+        <span style="color:#d0d4f0;">${appleIcon(10)}</span> iOS
+      </th>
+      ${countryThs}
+      <th style="${thStyle}">Rate</th>
+      <th style="padding:10px 16px;text-align:left;font-weight:600;min-width:120px;">Bar</th>
+    </tr>`;
+
+  // ── BUILD TBODY ───────────────────────────────────────────────────────────
+  const aIcon = `<span style="color:#3DDC84;">${androidIcon(11)}</span>`;
+  const iIcon = `<span style="color:#d0d4f0;">${appleIcon(10)}</span>`;
+
+  document.getElementById('featureStatsBody').innerHTML = entries.map(f => {
+    const total2 = f.enabledCount + f.disabledCount;
+    const rate = total2 > 0 ? Math.round(f.enabledCount/total2*100) : 0;
+    const barColor = rate>=70?'var(--green)':rate>=40?'var(--yellow)':'var(--red)';
+
+    // Country cells — khớp đúng thứ tự với thead country columns
+    const countryCells = countries.map(c => {
+      const cnt = f.countryStats?.[c];
+      if (!cnt) return `<td style="padding:11px 10px;text-align:center;color:var(--text3);border-left:1px solid var(--border);">—</td>`;
+      const cTotal = cnt.enabled + cnt.disabled;
+      const cRate = cTotal > 0 ? Math.round(cnt.enabled / cTotal * 100) : 0;
+      const cColor = cRate>=70?'var(--green)':cRate>=40?'var(--yellow)':'var(--red)';
+      return `<td style="padding:11px 10px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:${cColor};font-weight:600;border-left:1px solid var(--border);">${cnt.enabled}/${cTotal}</td>`;
+    }).join('');
+
+    return `<tr class="tr-feature">
+      <td style="padding:11px 16px;font-weight:500;font-size:13px;">${icons[f.name]||'⚙️'} ${f.name}</td>
+      <td style="padding:11px 12px;text-align:center;color:var(--green);font-weight:700;font-family:'JetBrains Mono',monospace;">${f.enabledCount}/${total2}</td>
+      <td style="padding:11px 12px;text-align:center;font-family:'JetBrains Mono',monospace;">${aIcon} ${f.androidEnabledCount??'—'}/${total2}</td>
+      <td style="padding:11px 12px;text-align:center;font-family:'JetBrains Mono',monospace;">${iIcon} ${f.iosEnabledCount??'—'}/${total2}</td>
+      ${countryCells}
+      <td style="padding:11px 12px;text-align:center;font-weight:700;font-family:'JetBrains Mono',monospace;color:${barColor};">${rate}%</td>
+      <td style="padding:11px 16px;min-width:120px;">
+        <div style="background:var(--surface2);border-radius:20px;height:6px;overflow:hidden;">
+          <div style="height:100%;background:${barColor};border-radius:20px;width:${rate}%;transition:width .4s;"></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderGameTable(results) {
+  if (!results) results = batchJobData?.results;
+  if (!results?.length) return;
+  document.getElementById('batchGameTable').style.display = 'block';
+  document.getElementById('batchEmptyState').style.display = 'none';
+
+  // Countries từ job data — single source of truth
+  const countries = batchJobData?.countries || [];
+  const totalDataCols = FEATURE_COLS.length * 2; // mỗi feature = 2 col (Android + iOS)
+  const errorColspan = 1 + totalDataCols; // gameId col + data cols
+
+  // ── BUILD THEAD DYNAMICALLY ───────────────────────────────────────────────
+  // Row 1: GameID (rowspan=2) | Ban (colspan=2) | Notify (colspan=2) | ...
+  const featureHeaderCells = FEATURE_COLS.map(col =>
+    `<th style="padding:6px 8px;text-align:center;font-weight:600;border-left:1px solid var(--border);" colspan="2">${col.label}</th>`
+  ).join('');
+
+  // Row 2: sub-header với Android/iOS icon cho mỗi feature
+  const platformSubCells = FEATURE_COLS.map(col =>
+    `<td style="padding:3px 5px;text-align:center;color:#3DDC84;border-left:1px solid var(--border);">${androidIcon(10)}</td>` +
+    `<td style="padding:3px 5px;text-align:center;color:#d0d4f0;">${appleIcon(9)}</td>`
+  ).join('');
+
+  const theadStyle = 'background:var(--surface2);font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;';
+  document.getElementById('gameDetailThead').innerHTML = `
+    <tr style="${theadStyle}">
+      <th style="padding:10px 16px;text-align:left;font-weight:600;position:sticky;left:0;background:var(--surface2);" rowspan="2">GameID</th>
+      ${featureHeaderCells}
+    </tr>
+    <tr style="${theadStyle}">
+      ${platformSubCells}
+    </tr>`;
+
+  // ── FILTER + SEARCH ───────────────────────────────────────────────────────
+  const filter = document.getElementById('gameFilterSelect')?.value||'all';
+  const search = (document.getElementById('gameSearchInput')?.value||'').toLowerCase();
+  let filtered = results;
+  if (filter==='success') filtered = filtered.filter(r=>r.success);
+  if (filter==='failed')  filtered = filtered.filter(r=>!r.success);
+  if (search) filtered = filtered.filter(r=>r.gameId.toLowerCase().includes(search));
+
+  function cell(enabled, icon, color) {
+    return `<td style="padding:7px 5px;text-align:center;color:${enabled?color:'#3d4270'};">${icon}</td>`;
+  }
+
+  // ── BUILD TBODY ───────────────────────────────────────────────────────────
+  document.getElementById('gameDetailBody').innerHTML = filtered.map(r => {
+    if (!r.success) return `
+      <tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:9px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;position:sticky;left:0;background:var(--surface);">${r.gameId}</td>
+        <td colspan="${errorColspan}" style="padding:9px 12px;color:var(--red);font-size:12px;">⚠️ ${escapeHTML(r.error||'Failed')}</td>
+      </tr>`;
+
+    // Main row — dùng default slot
+    const mainCells = FEATURE_COLS.map(col => {
+      const a = r.features?.[col.key]?.default?.android;
+      const i = r.features?.[col.key]?.default?.ios;
+      return cell(a, androidIcon(10), '#3DDC84') + cell(i, appleIcon(9), '#d0d4f0');
+    }).join('');
+
+    // Country sub-rows — expandable, dùng countries từ job level (không phải từng game)
+    const countryRows = countries.map(co => {
+      const cCells = FEATURE_COLS.map(col => {
+        const ca = r.features?.[col.key]?.countries?.[co]?.android;
+        const ci = r.features?.[col.key]?.countries?.[co]?.ios;
+        return cell(ca, androidIcon(10), '#3DDC84') + cell(ci, appleIcon(9), '#d0d4f0');
+      }).join('');
+      const safeId = r.gameId.replace(/[^a-z0-9]/gi,'_');
+      return `<tr class="country-subrow-${safeId} tr-country" style="display:none;">
+        <td style="padding:6px 16px 6px 28px;font-family:'JetBrains Mono',monospace;font-size:11px;position:sticky;left:0;background:inherit;color:var(--text3);">🌍 ${co}</td>
+        ${cCells}
+      </tr>`;
+    }).join('');
+
+    const hasCountries = countries.length > 0;
+    const rowId = r.gameId.replace(/[^a-z0-9]/gi,'_');
+
+    return `
+      <tr class="tr-game">
+        <td style="padding:9px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;position:sticky;left:0;background:var(--surface);cursor:${hasCountries?'pointer':'default'};"
+          onclick="${hasCountries?`toggleCountryRows('${rowId}', this)`:''}">
+          ${hasCountries?'<span style="color:var(--text3);font-size:10px;margin-right:4px;">▶</span>':''}${r.gameId}
+        </td>
+        ${mainCells}
+      </tr>${countryRows}`;
+  }).join('');
+}
+
+function toggleCountryRows(rowId, cell) {
+  const rows = document.querySelectorAll(`.country-subrow-${rowId}`);
+  const arrow = cell.querySelector('span');
+  const isHidden = rows[0]?.style.display === 'none';
+  rows.forEach(r => r.style.display = isHidden ? 'table-row' : 'none');
+  if (arrow) arrow.textContent = isHidden ? '▼ ' : '▶ ';
+}
+
+function showBatchError(msg) {
+  const el = document.getElementById('batchError');
+  el.style.display = 'block';
+  el.innerHTML = `<div style="background:var(--red-bg);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:10px 14px;color:var(--red);font-size:12px;">
+    <strong>⚠️ Error</strong><br>
+    <pre style="margin-top:6px;white-space:pre-wrap;font-family:'JetBrains Mono',monospace;">${escapeHTML(msg)}</pre>
+  </div>`;
+  document.getElementById('batchProgress').style.display = 'none';
+}
+
+function exportCSV() {
+  if (!batchJobData?.results) return;
+  const countries = batchJobData?.countries || [];
+  const baseHeaders = FEATURE_COLS.flatMap(c => [c.label+'_Android', c.label+'_iOS']);
+  const countryHeaders = countries.flatMap(c => FEATURE_COLS.map(f => `${f.label}_${c}`));
+  const headers = ['GameID', ...baseHeaders, ...countryHeaders, 'Status', 'Error'];
+  const rows = [headers];
+  batchJobData.results.forEach(r => {
+    if (!r.success) {
+      rows.push([r.gameId, ...baseHeaders.map(()=>''), ...countryHeaders.map(()=>''), 'FAILED', r.error||'']);
+    } else {
+      const baseCols = FEATURE_COLS.flatMap(c => [
+        r.features[c.key]?.default?.android?'1':'0',
+        r.features[c.key]?.default?.ios?'1':'0'
+      ]);
+      const countryCols = countries.flatMap(c =>
+        FEATURE_COLS.map(f => {
+          const v = r.features[f.key]?.countries?.[c];
+          return v ? ((v.android||v.ios)?'1':'0') : '';
+        })
+      );
+      rows.push([r.gameId, ...baseCols, ...countryCols, 'OK', '']);
+    }
+  });
+  const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download = `sdk-stats-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+</script>
+<!-- API client (gọi backend) -->
+<script src="js/api-client.js"></script>
+
+<!-- Pipeline feature modules -->
+<script src="js/pipeline/data-store.js"></script>
+<script src="js/pipeline/stats-renderer.js"></script>
+<script src="js/pipeline/renderer.js"></script>
+<script src="js/pipeline/pipeline.js"></script>
+<script>
+// Load user info vào header
+ApiClient.me().then(user => {
+  if (!user) return;
+  const info   = document.getElementById('user-info');
+  const avatar = document.getElementById('user-avatar');
+  const name   = document.getElementById('user-name');
+  if (info)   info.style.display = 'flex';
+  if (avatar) { avatar.src = user.picture || ''; avatar.style.display = user.picture ? '' : 'none'; }
+  if (name)   name.textContent = user.name || user.email;
+});
+
+// Boot pipeline panel khi tab được mở lần đầu
+(function() {
+  let _pipelineBooted = false;
+  const _origSelectTool = typeof selectTool === 'function' ? selectTool : null;
+  window.selectTool = function(tool, el) {
+    if (_origSelectTool) _origSelectTool(tool, el);
+    if (tool === 'pipeline' && !_pipelineBooted) {
+      _pipelineBooted = true;
+      PipelinePanel.boot();
+    }
+  };
+})();
+</script>
+</body>
+</html>

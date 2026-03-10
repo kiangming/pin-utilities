@@ -1,0 +1,23 @@
+# Legacy files — không cần thiết trên Railway
+serve.py
+proxy.py
+server.py
+sdk-config-analyzer.html
+index.html
+
+# Pipeline modules cũ (đã copy vào frontend/)
+pipeline/
+
+# Google OAuth client secret — KHÔNG commit lên git
+client_secret_*.json
+
+# Session files và logs
+backend/sessions/
+.server.pid
+.server.log
+
+# Dev artifacts
+__pycache__/
+*.pyc
+.DS_Store
+*.env
