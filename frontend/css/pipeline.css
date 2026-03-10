@@ -462,6 +462,16 @@
 .pls-alert-card.warning .pls-alert-days { color: #fde68a; }
 .pls-alert-more { font-size: 10.5px; color: var(--text3); margin-top: 2px; }
 
+/* Light theme overrides — pastel colors invisible on light bg */
+[data-theme="light"] .pls-alert-card.urgent  .pls-alert-title  { color: #b91c1c; }
+[data-theme="light"] .pls-alert-card.warning .pls-alert-title  { color: #92400e; }
+[data-theme="light"] .pls-alert-card.info    .pls-alert-title  { color: #0e7490; }
+[data-theme="light"] .pls-alert-card.urgent  .pls-alert-evtype { color: #b91c1c; background: rgba(185,28,28,0.1); }
+[data-theme="light"] .pls-alert-card.warning .pls-alert-evtype { color: #92400e; background: rgba(146,64,14,0.1); }
+[data-theme="light"] .pls-alert-card.info    .pls-alert-evtype { color: #0e7490; background: rgba(14,116,144,0.1); }
+[data-theme="light"] .pls-alert-card.urgent  .pls-alert-days   { color: #b91c1c; }
+[data-theme="light"] .pls-alert-card.warning .pls-alert-days   { color: #92400e; }
+
 /* ── Filter Row ──────────────────────────────────────────────────────────── */
 .pls-filter-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pls-filter-lbl { font-size: 11px; color: var(--text3); font-weight: 500; flex-shrink: 0; }
