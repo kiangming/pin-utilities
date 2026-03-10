@@ -3,10 +3,9 @@ Bootstrap router — proxy đến VNGGames Bootstrap API.
 
 Routes:
   GET  /api/config                   → fetch config 1 game
-  POST /api/batch                    → start batch job
+  POST /api/batch                    → start batch job (game_ids từ client)
   GET  /api/batch/status?jobId=xxx   → poll job progress
 """
-import os
 from fastapi import APIRouter, Query, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -38,18 +37,11 @@ async def start_batch(
     body: BatchStartRequest,
     _session: SessionData = Depends(require_session),
 ):
-    filepath = os.path.abspath(os.path.expanduser(body.filepath))
-    if not os.path.isfile(filepath):
-        raise HTTPException(404, detail=f"File not found: {filepath}")
+    if not body.game_ids:
+        raise HTTPException(400, detail="No game IDs provided")
 
-    with open(filepath, encoding="utf-8") as f:
-        game_ids = [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
-
-    if not game_ids:
-        raise HTTPException(400, detail="No game IDs found in file")
-
-    job_id = bootstrap_service.start_batch(game_ids, body.countries)
-    return JSONResponse({"jobId": job_id, "total": len(game_ids),
+    job_id = bootstrap_service.start_batch(body.game_ids, body.countries)
+    return JSONResponse({"jobId": job_id, "total": len(body.game_ids),
                          "status": "running", "countries": body.countries}, status_code=202)
 
 

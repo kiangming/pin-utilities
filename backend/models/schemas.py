@@ -17,7 +17,7 @@ class SessionData(BaseModel):
 
 
 class BatchStartRequest(BaseModel):
-    filepath: str
+    game_ids: list[str]       # parsed client-side từ file upload
     countries: list[str] = []
 
 

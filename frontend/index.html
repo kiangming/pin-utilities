@@ -502,11 +502,15 @@
     </div>
     <div class="selector-row" style="align-items:flex-start; gap:10px; flex-wrap:wrap;">
       <div style="flex:1; min-width:300px;">
-        <div style="font-size:11px; color:var(--text3); margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:.8px;">Path to games.txt file</div>
-        <div style="display:flex; gap:8px;">
-          <input id="batchFilePath" class="game-input" style="flex:1; background:var(--bg); border:1px solid var(--border2); border-radius:8px; padding:9px 12px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:12px; outline:none;"
-            placeholder="/Users/you/games.txt" />
-          <button class="btn-fetch" id="batchRunBtn" onclick="startBatch()">▶ Run Analysis</button>
+        <div style="font-size:11px; color:var(--text3); margin-bottom:6px; font-weight:600; text-transform:uppercase; letter-spacing:.8px;">Upload games.txt</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label id="batchFileLabel" style="flex:1; display:flex; align-items:center; gap:10px; background:var(--bg); border:1.5px dashed var(--border2); border-radius:8px; padding:9px 14px; cursor:pointer; transition:border-color .15s;"
+            onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border2)'">
+            <span style="font-size:16px;">📂</span>
+            <span id="batchFileNameDisplay" style="font-size:12px; color:var(--text3); font-family:'JetBrains Mono',monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Chọn file hoặc kéo thả vào đây</span>
+            <input id="batchFileInput" type="file" accept=".txt" style="display:none;" onchange="onBatchFileSelected(this)" />
+          </label>
+          <button class="btn-fetch" id="batchRunBtn" onclick="startBatch()" disabled style="opacity:.5; cursor:not-allowed;">▶ Run Analysis</button>
         </div>
         <div style="font-size:11px; color:var(--text3); margin-top:6px;">
           File format: one gameID per line. Lines starting with <code style="background:var(--surface2); padding:1px 5px; border-radius:3px;">#</code> are ignored.
@@ -603,7 +607,7 @@
     <div id="batchEmptyState" class="empty-state" style="flex:1;">
       <div class="empty-icon">📋</div>
       <div class="empty-title">No analysis yet</div>
-      <div class="empty-sub">Enter path to your games.txt file<br>and click Run Analysis</div>
+      <div class="empty-sub">Upload file games.txt từ máy local<br>và nhấn Run Analysis</div>
     </div>
 
   </div>
@@ -1321,9 +1325,26 @@ const FEATURE_COLS = [
   {key:'secure_account_status',label:'Secure'},{key:'vn_policy_13',label:'Policy'},{key:'appsflyer',label:'AF'},
 ];
 
+function onBatchFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const display = document.getElementById('batchFileNameDisplay');
+  if (display) display.textContent = `${file.name}  (${(file.size/1024).toFixed(1)} KB)`;
+  if (display) display.style.color = 'var(--text)';
+  const btn = document.getElementById('batchRunBtn');
+  if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; }
+}
+
 async function startBatch() {
-  const filepath = document.getElementById('batchFilePath').value.trim();
-  if (!filepath) { showBatchError('Please enter a file path'); return; }
+  const fileInput = document.getElementById('batchFileInput');
+  const file = fileInput?.files[0];
+  if (!file) { showBatchError('Vui lòng chọn file games.txt trước'); return; }
+
+  const text = await file.text();
+  const game_ids = text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('#'));
+  if (!game_ids.length) { showBatchError('Không tìm thấy game ID nào trong file'); return; }
 
   const countryRaw = document.getElementById('batchCountryInput')?.value || '';
   const countries = parseCountries(countryRaw);
@@ -1345,16 +1366,16 @@ async function startBatch() {
     const res = await fetch(`${PROXY}/api/batch`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ filepath, countries })
+      body: JSON.stringify({ game_ids, countries })
     });
     const data = await res.json();
-    if (!data.jobId) { showBatchError(data.error||'Failed to start job'); return; }
+    if (!data.jobId) { showBatchError(data.detail || data.error || 'Failed to start job'); return; }
     batchJobId = data.jobId;
     const cLabel = countries.length ? ` + countries: ${countries.join(', ')}` : '';
     document.getElementById('batchStatusMsg').textContent = `Job ${data.jobId} — ${data.total} games${cLabel}`;
     batchPollInterval = setInterval(pollBatch, 800);
   } catch(e) {
-    showBatchError(`Cannot connect to proxy.\nRun: python3 proxy.py\n\n${e.message}`);
+    showBatchError(`Lỗi kết nối backend: ${e.message}`);
     document.getElementById('batchRunBtn').disabled = false;
     clearInterval(batchTimerInterval);
   }
