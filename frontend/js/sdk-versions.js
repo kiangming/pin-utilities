@@ -12,11 +12,15 @@ const SdkVersionPanel = (() => {
     latestVersions: new Set(),
     stableVersions: new Set(),
   };
-  let _sortField = 'adoption';
-  let _sortDir   = 'desc';
+  let _sortField      = 'adoption';
+  let _sortDir        = 'desc';
+  let _detailRendered = false;
+  let _dropdownOpen   = null; // 'latest' | 'stable' | null
+  let _eventsWired    = false;
 
-  const PLATFORM_ICON = { android: '🤖', ios: '🍎', windows: '🖥️' };
-  const DONUT_COLORS  = ['#6c63ff', '#22d3ee', '#a78bfa', '#f59e0b', '#34d399', '#f87171'];
+  const PLATFORM_ICON  = { android: '🤖', ios: '🍎', windows: '🖥️' };
+  const DONUT_COLORS   = ['#6c63ff', '#22d3ee', '#a78bfa', '#f59e0b', '#34d399', '#f87171'];
+  const STATUS_BORDER  = { ok: '#22c55e', warn: '#f59e0b', critical: '#ef4444', unknown: 'var(--border2)' };
 
   // ── Public API ───────────────────────────────────────────────────────────────
 
@@ -28,6 +32,7 @@ const SdkVersionPanel = (() => {
 
   async function fetchData() {
     _showLoading();
+    _detailRendered = false;
     try {
       const [summaryRes, detailRes] = await Promise.all([
         ApiClient.get('/api/sdk-versions/summary'),
@@ -53,14 +58,13 @@ const SdkVersionPanel = (() => {
 
   function applySearch() {
     _filter.search = document.getElementById('sdkv-search')?.value?.trim() || '';
-    _renderDetail();
+    _applyAndRenderTable();
   }
 
   function applyFilter() {
     _filter.platform = document.getElementById('sdkv-filter-platform')?.value || '';
     _filter.status   = document.getElementById('sdkv-filter-status')?.value || '';
-    _filter.search   = document.getElementById('sdkv-search')?.value?.trim() || '';
-    _renderDetail();
+    _applyAndRenderTable();
   }
 
   function setSortField(field) {
@@ -70,19 +74,40 @@ const SdkVersionPanel = (() => {
       _sortField = field;
       _sortDir   = field === 'adoption' ? 'desc' : 'asc';
     }
-    _renderDetail();
+    _updateSortIcons();
+    _applyAndRenderTable();
   }
 
   function toggleVersionFilter(type, ver) {
     const set = type === 'latest' ? _filter.latestVersions : _filter.stableVersions;
     if (set.has(ver)) set.delete(ver); else set.add(ver);
-    _renderDetail();
+    _updateDropdownGrid(type);
+    _updateDropdownTrigger(type);
+    _applyAndRenderTable();
   }
 
   function toggleVersionAll(type) {
     if (type === 'latest') _filter.latestVersions.clear();
     else _filter.stableVersions.clear();
-    _renderDetail();
+    _updateDropdownGrid(type);
+    _updateDropdownTrigger(type);
+    _applyAndRenderTable();
+  }
+
+  function toggleDropdown(type) {
+    const panel = document.getElementById(`sdkv-vf-${type}-panel`);
+    if (!panel) return;
+    if (_dropdownOpen === type) {
+      panel.style.display = 'none';
+      _dropdownOpen = null;
+    } else {
+      if (_dropdownOpen) {
+        const other = document.getElementById(`sdkv-vf-${_dropdownOpen}-panel`);
+        if (other) other.style.display = 'none';
+      }
+      panel.style.display = 'block';
+      _dropdownOpen = type;
+    }
   }
 
   // ── Private ──────────────────────────────────────────────────────────────────
@@ -272,6 +297,255 @@ const SdkVersionPanel = (() => {
 
   // ── Detail rendering ──────────────────────────────────────────────────────────
 
+  function _renderDetail() {
+    const el = document.getElementById('sdkv-detail-content');
+    if (!el) return;
+    if (!_detailData) {
+      el.innerHTML = _emptyState('Chưa có dữ liệu.');
+      _detailRendered = false;
+      return;
+    }
+    if (!_detailRendered) {
+      el.innerHTML = _buildDetailShell();
+      _wireDetailEvents();
+      _detailRendered = true;
+    }
+    _refreshDropdownGrids();
+    _updateDropdownTrigger('latest');
+    _updateDropdownTrigger('stable');
+    _applyAndRenderTable();
+  }
+
+  function _applyAndRenderTable() {
+    if (!_detailRendered) return;
+    _renderTableBody();
+    _updateSortIcons();
+  }
+
+  function _buildDetailShell() {
+    return `
+      <div class="sdkv-filters" id="sdkv-filters">
+        <input class="sdkv-search" id="sdkv-search" type="text"
+               placeholder="🔍 Search game / product..."
+               oninput="SdkVersionPanel.applySearch()" />
+        <select class="sdkv-select" id="sdkv-filter-platform" onchange="SdkVersionPanel.applyFilter()">
+          <option value="">Platform: All</option>
+          <option value="android">🤖 Android</option>
+          <option value="ios">🍎 iOS</option>
+          <option value="windows">🖥️ Windows</option>
+        </select>
+        <select class="sdkv-select" id="sdkv-filter-status" onchange="SdkVersionPanel.applyFilter()">
+          <option value="">Status: All</option>
+          <option value="ok">✅ OK (≥80%)</option>
+          <option value="warn">⚠️ Warn (50–79%)</option>
+          <option value="critical">🔴 Critical (&lt;50%)</option>
+        </select>
+        <div class="sdkv-vf-wrap" id="sdkv-vf-latest-wrap">
+          <button class="sdkv-vf-trigger" id="sdkv-vf-latest-btn"
+                  onclick="SdkVersionPanel.toggleDropdown('latest')">
+            Latest: All ▾
+          </button>
+          <div class="sdkv-vf-panel" id="sdkv-vf-latest-panel">
+            <div class="sdkv-vf-panel-header">
+              <span class="sdkv-vf-panel-title">Latest Version</span>
+              <button class="sdkv-vf-all-btn" onclick="SdkVersionPanel.toggleVersionAll('latest')">✓ All</button>
+            </div>
+            <div class="sdkv-vf-grid" id="sdkv-vf-latest-grid"></div>
+          </div>
+        </div>
+        <div class="sdkv-vf-wrap" id="sdkv-vf-stable-wrap">
+          <button class="sdkv-vf-trigger" id="sdkv-vf-stable-btn"
+                  onclick="SdkVersionPanel.toggleDropdown('stable')">
+            Stable: All ▾
+          </button>
+          <div class="sdkv-vf-panel" id="sdkv-vf-stable-panel">
+            <div class="sdkv-vf-panel-header">
+              <span class="sdkv-vf-panel-title">Stable Version</span>
+              <button class="sdkv-vf-all-btn" onclick="SdkVersionPanel.toggleVersionAll('stable')">✓ All</button>
+            </div>
+            <div class="sdkv-vf-grid" id="sdkv-vf-stable-grid"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sdkv-detail-table-wrap">
+        <table class="sdkv-detail-table">
+          <thead><tr>
+            <th class="sdkv-th-sort sdkv-th-game" onclick="SdkVersionPanel.setSortField('game')">
+              Product / Game <span id="sdkv-si-game" class="sdkv-sort-icon">⇅</span>
+            </th>
+            <th>Platform</th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('latest')">
+              Latest <span id="sdkv-si-latest" class="sdkv-sort-icon">⇅</span>
+            </th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('adoption')">
+              Adoption <span id="sdkv-si-adoption" class="sdkv-sort-icon active">↓</span>
+            </th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('stable')">
+              Stable <span id="sdkv-si-stable" class="sdkv-sort-icon">⇅</span>
+            </th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="sdkv-detail-tbody"></tbody>
+        </table>
+      </div>
+      <div class="sdkv-detail-footer" id="sdkv-detail-footer"></div>`;
+  }
+
+  function _wireDetailEvents() {
+    const tbody = document.getElementById('sdkv-detail-tbody');
+    if (tbody) {
+      tbody.addEventListener('mouseover', e => {
+        const row = e.target.closest('tr[data-gid]');
+        tbody.querySelectorAll('tr[data-gid]').forEach(r => {
+          r.classList.toggle('sdkv-row-hover', row ? r.dataset.gid === row.dataset.gid : false);
+        });
+      });
+      tbody.addEventListener('mouseleave', () => {
+        tbody.querySelectorAll('.sdkv-row-hover').forEach(r => r.classList.remove('sdkv-row-hover'));
+      });
+    }
+    if (!_eventsWired) {
+      document.addEventListener('click', e => {
+        if (!_dropdownOpen) return;
+        const wrap = document.getElementById(`sdkv-vf-${_dropdownOpen}-wrap`);
+        if (wrap && !wrap.contains(e.target)) {
+          const panel = document.getElementById(`sdkv-vf-${_dropdownOpen}-panel`);
+          if (panel) panel.style.display = 'none';
+          _dropdownOpen = null;
+        }
+      });
+      _eventsWired = true;
+    }
+  }
+
+  function _refreshDropdownGrids() {
+    _updateDropdownGrid('latest');
+    _updateDropdownGrid('stable');
+  }
+
+  function _updateDropdownGrid(type) {
+    const gridEl = document.getElementById(`sdkv-vf-${type}-grid`);
+    if (!gridEl) return;
+    const field    = type === 'latest' ? 'latest_version' : 'stable_version';
+    const versions = _getVersionOptions(field);
+    const selected = type === 'latest' ? _filter.latestVersions : _filter.stableVersions;
+    gridEl.innerHTML = versions.map(v => {
+      const checked = selected.has(v) ? 'checked' : '';
+      const active  = selected.has(v) ? 'active' : '';
+      return `<label class="sdkv-vf-item ${active}">
+        <input type="checkbox" ${checked}
+               onchange="SdkVersionPanel.toggleVersionFilter('${type}', ${JSON.stringify(v)})">
+        <span>${_esc(v)}</span>
+      </label>`;
+    }).join('');
+  }
+
+  function _updateDropdownTrigger(type) {
+    const btn = document.getElementById(`sdkv-vf-${type}-btn`);
+    if (!btn) return;
+    const selected = type === 'latest' ? _filter.latestVersions : _filter.stableVersions;
+    const label    = type === 'latest' ? 'Latest' : 'Stable';
+    if (selected.size === 0) {
+      btn.textContent = `${label}: All ▾`;
+      btn.classList.remove('active');
+    } else if (selected.size === 1) {
+      btn.textContent = `${label}: ${[...selected][0]} ▾`;
+      btn.classList.add('active');
+    } else {
+      btn.textContent = `${label}: ${selected.size} selected ▾`;
+      btn.classList.add('active');
+    }
+  }
+
+  function _updateSortIcons() {
+    ['game', 'latest', 'adoption', 'stable'].forEach(field => {
+      const el = document.getElementById(`sdkv-si-${field}`);
+      if (!el) return;
+      if (_sortField === field) {
+        el.textContent = _sortDir === 'asc' ? '↑' : '↓';
+        el.classList.add('active');
+      } else {
+        el.textContent = '⇅';
+        el.classList.remove('active');
+      }
+    });
+  }
+
+  function _renderTableBody() {
+    const tbody  = document.getElementById('sdkv-detail-tbody');
+    const footer = document.getElementById('sdkv-detail-footer');
+    if (!tbody) return;
+
+    const filtered = _applyFilters(_detailData.items || []);
+    const groups   = _sortGroups(_groupByGame(filtered));
+
+    if (groups.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Không có kết quả phù hợp</td></tr>`;
+    } else {
+      tbody.innerHTML = groups.map(g => _buildMergedRows(g)).join('');
+    }
+
+    if (footer) {
+      const latestDate = filtered.length
+        ? filtered.reduce((max, i) => (!max || (i.latest_date || '') > max ? i.latest_date : max), '')
+        : null;
+      footer.innerHTML = `
+        <span>${filtered.length} records · ${groups.length} games</span>
+        <span>${latestDate ? '📅 Snapshot: ' + _fmtDate(latestDate) : ''}</span>`;
+    }
+  }
+
+  function _buildMergedRows(group) {
+    const worstStatus = _worstStatus(group.rows);
+    const borderColor = STATUS_BORDER[worstStatus] || 'var(--border2)';
+    const sortedRows  = [...group.rows].sort((a, b) =>
+      (b.latest_version_share_ratio ?? -1) - (a.latest_version_share_ratio ?? -1)
+    );
+    const rowCount = sortedRows.length;
+
+    return sortedRows.map((row, i) => {
+      const ratio     = row.latest_version_share_ratio ?? null;
+      const fillClass = row.status === 'critical' ? 'crit' : row.status === 'warn' ? 'warn' : '';
+      const gameCell  = i === 0 ? `
+        <td class="sdkv-game-cell" rowspan="${rowCount}"
+            style="border-left:3px solid ${borderColor}">
+          <div class="sdkv-game-name">${_esc(group.product_name || group.game_id)}</div>
+          ${group.product_name ? `<div class="sdkv-game-id-tag">${_esc(group.game_id)}</div>` : ''}
+        </td>` : '';
+
+      return `<tr data-gid="${_esc(group.game_id)}">
+        ${gameCell}
+        <td class="sdkv-platform-td">
+          <span class="sdkv-platform-icon">${PLATFORM_ICON[row.platform] || '💻'}</span>
+          <span>${_esc(row.platform)}</span>
+        </td>
+        <td class="sdkv-version-tag">${_esc(row.latest_version || '—')}</td>
+        <td class="sdkv-adoption-cell">
+          <div class="sdkv-adoption-wrap">
+            <div class="sdkv-adoption-bar">
+              <div class="sdkv-adoption-fill ${fillClass}" style="width:${ratio ?? 0}%"></div>
+            </div>
+            <span class="sdkv-adoption-pct">${ratio !== null ? ratio + '%' : '—'}</span>
+          </div>
+        </td>
+        <td class="sdkv-version-tag">
+          ${_esc(row.stable_version || '—')}
+          ${row.version_mismatch ? '<span class="sdkv-mismatch-icon" title="Latest ≠ Stable">⚡</span>' : ''}
+        </td>
+        <td>${_statusBadge(row.status)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Data helpers ──────────────────────────────────────────────────────────────
+
+  function _worstStatus(rows) {
+    const priority = { critical: 3, warn: 2, ok: 1, unknown: 0 };
+    return rows.reduce((worst, r) => {
+      return (priority[r.status] ?? 0) > (priority[worst] ?? 0) ? r.status : worst;
+    }, 'unknown');
+  }
+
   function _getVersionOptions(field) {
     return [...new Set((_detailData?.items || []).map(i => i[field]).filter(Boolean))].sort();
   }
@@ -304,7 +578,6 @@ const SdkVersionPanel = (() => {
     return [...groups].sort((a, b) => {
       let ka, kb;
       if (_sortField === 'adoption') {
-        // sort by min adoption across platforms (worst platform)
         ka = Math.min(...a.rows.map(r => r.latest_version_share_ratio ?? -1));
         kb = Math.min(...b.rows.map(r => r.latest_version_share_ratio ?? -1));
         return _sortDir === 'desc' ? kb - ka : ka - kb;
@@ -323,139 +596,7 @@ const SdkVersionPanel = (() => {
     });
   }
 
-  function _sortIcon(field) {
-    if (_sortField !== field) return '<span class="sdkv-sort-icon">⇅</span>';
-    return `<span class="sdkv-sort-icon active">${_sortDir === 'asc' ? '↑' : '↓'}</span>`;
-  }
-
-  function _renderVersionChips(allVersions, selectedSet, type) {
-    const allActive = selectedSet.size === 0;
-    const chips = allVersions.map(v => {
-      const active = selectedSet.has(v) ? 'active' : '';
-      return `<span class="sdkv-vchip ${active}" onclick="SdkVersionPanel.toggleVersionFilter('${type}', ${JSON.stringify(v)})">${_esc(v)}</span>`;
-    }).join('');
-    return `<span class="sdkv-vchip ${allActive ? 'active' : ''}" onclick="SdkVersionPanel.toggleVersionAll('${type}')">All</span>${chips}`;
-  }
-
-  function _renderGameGroup(group) {
-    const header = `
-      <tr class="sdkv-group-header">
-        <td colspan="5">
-          <span class="sdkv-group-name">${_esc(group.product_name || group.game_id)}</span>
-          ${group.product_name ? `<span class="sdkv-group-gid">${_esc(group.game_id)}</span>` : ''}
-          <span class="sdkv-group-count">${group.rows.length} platform${group.rows.length > 1 ? 's' : ''}</span>
-        </td>
-      </tr>`;
-
-    // sub-rows: sort platforms by adoption desc within group
-    const sortedRows = [...group.rows].sort((a, b) =>
-      (b.latest_version_share_ratio ?? -1) - (a.latest_version_share_ratio ?? -1)
-    );
-
-    const rows = sortedRows.map(row => {
-      const ratio = row.latest_version_share_ratio ?? null;
-      const fillClass = row.status === 'critical' ? 'crit' : row.status === 'warn' ? 'warn' : '';
-      return `
-      <tr class="sdkv-sub-row">
-        <td><span class="sdkv-platform-icon">${PLATFORM_ICON[row.platform] || '💻'}</span> ${_esc(row.platform)}</td>
-        <td class="sdkv-version-tag">${_esc(row.latest_version || '—')}</td>
-        <td class="sdkv-adoption-cell">
-          <div class="sdkv-adoption-wrap">
-            <div class="sdkv-adoption-bar">
-              <div class="sdkv-adoption-fill ${fillClass}" style="width:${ratio ?? 0}%"></div>
-            </div>
-            <span class="sdkv-adoption-pct">${ratio !== null ? ratio + '%' : '—'}</span>
-          </div>
-        </td>
-        <td class="sdkv-version-tag">
-          ${_esc(row.stable_version || '—')}
-          ${row.version_mismatch ? '<span class="sdkv-mismatch-icon" title="Latest ≠ Stable">⚡</span>' : ''}
-        </td>
-        <td>${_statusBadge(row.status)}</td>
-      </tr>`;
-    }).join('');
-
-    return header + rows;
-  }
-
-  function _renderDetail() {
-    const el = document.getElementById('sdkv-detail-content');
-    if (!el) return;
-    if (!_detailData) {
-      el.innerHTML = _emptyState('Chưa có dữ liệu.');
-      return;
-    }
-
-    const allLatest = _getVersionOptions('latest_version');
-    const allStable = _getVersionOptions('stable_version');
-
-    const filtered = _applyFilters(_detailData.items || []);
-    const groups   = _sortGroups(_groupByGame(filtered));
-
-    const tableRows = groups.map(g => _renderGameGroup(g)).join('');
-    const emptyRow  = groups.length === 0
-      ? `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text3)">Không có kết quả phù hợp</td></tr>`
-      : '';
-
-    const latestDate = filtered.length
-      ? filtered.reduce((max, i) => (!max || (i.latest_date || '') > max ? i.latest_date : max), '')
-      : null;
-
-    el.innerHTML = `
-      <div class="sdkv-filters">
-        <input class="sdkv-search" id="sdkv-search" type="text"
-               placeholder="🔍 Search game / product..."
-               value="${_esc(_filter.search)}" oninput="SdkVersionPanel.applySearch()" />
-        <select class="sdkv-select" id="sdkv-filter-platform" onchange="SdkVersionPanel.applyFilter()">
-          <option value="">Platform: All</option>
-          <option value="android" ${_filter.platform==='android' ? 'selected':''}>🤖 Android</option>
-          <option value="ios"     ${_filter.platform==='ios'     ? 'selected':''}>🍎 iOS</option>
-          <option value="windows" ${_filter.platform==='windows' ? 'selected':''}>🖥️ Windows</option>
-        </select>
-        <select class="sdkv-select" id="sdkv-filter-status" onchange="SdkVersionPanel.applyFilter()">
-          <option value="">Status: All</option>
-          <option value="ok"       ${_filter.status==='ok'       ? 'selected':''}>✅ OK (≥80%)</option>
-          <option value="warn"     ${_filter.status==='warn'     ? 'selected':''}>⚠️ Warn (50–79%)</option>
-          <option value="critical" ${_filter.status==='critical' ? 'selected':''}>🔴 Critical (&lt;50%)</option>
-        </select>
-      </div>
-      ${allLatest.length ? `
-      <div class="sdkv-version-filters">
-        <span class="sdkv-vf-label">Latest:</span>
-        ${_renderVersionChips(allLatest, _filter.latestVersions, 'latest')}
-      </div>` : ''}
-      ${allStable.length ? `
-      <div class="sdkv-version-filters">
-        <span class="sdkv-vf-label">Stable:</span>
-        ${_renderVersionChips(allStable, _filter.stableVersions, 'stable')}
-      </div>` : ''}
-      <div class="sdkv-detail-table-wrap">
-        <table class="sdkv-detail-table">
-          <thead><tr>
-            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('game')">
-              Product / Game ${_sortIcon('game')}
-            </th>
-            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('latest')">
-              Latest Version ${_sortIcon('latest')}
-            </th>
-            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('adoption')">
-              Adoption Rate ${_sortIcon('adoption')}
-            </th>
-            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('stable')">
-              Stable Version ${_sortIcon('stable')}
-            </th>
-            <th>Status</th>
-          </tr></thead>
-          <tbody>${tableRows}${emptyRow}</tbody>
-        </table>
-      </div>
-      <div class="sdkv-detail-footer">
-        <span>${filtered.length} records · ${groups.length} games</span>
-        <span>${latestDate ? '📅 Snapshot: ' + _fmtDate(latestDate) : ''}</span>
-      </div>`;
-  }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+  // ── UI helpers ────────────────────────────────────────────────────────────────
 
   function _statusBadge(status) {
     const map = { ok: '✅ OK', warn: '⚠️ Warn', critical: '🔴 Critical', unknown: '— Unknown' };
@@ -495,6 +636,7 @@ const SdkVersionPanel = (() => {
     boot, fetchData, switchView,
     applySearch, applyFilter,
     setSortField, toggleVersionFilter, toggleVersionAll,
+    toggleDropdown,
     _switchDistTab,
   };
 })();

@@ -288,57 +288,83 @@
 }
 
 /* ── Sortable column headers ──────────────────────────────────────────────── */
-.sdkv-th-sort {
-  cursor: pointer; user-select: none;
-}
+.sdkv-th-sort { cursor: pointer; user-select: none; }
 .sdkv-th-sort:hover { color: var(--text2); }
 .sdkv-sort-icon {
   display: inline-block; margin-left: 4px; font-size: 11px;
   color: var(--text3); opacity: .6;
 }
 .sdkv-sort-icon.active { color: var(--accent); opacity: 1; }
+.sdkv-th-game { min-width: 180px; }
 
-/* ── Version filter chips ─────────────────────────────────────────────────── */
-.sdkv-version-filters {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-  margin-bottom: 10px; flex-shrink: 0;
-}
-.sdkv-vf-label {
-  font-size: 11px; font-weight: 700; color: var(--text3);
-  text-transform: uppercase; letter-spacing: .5px; margin-right: 2px;
-  white-space: nowrap;
-}
-.sdkv-vchip {
-  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
-  cursor: pointer; border: 1px solid var(--border2); color: var(--text3);
-  background: none; transition: all .15s; white-space: nowrap;
-  font-family: monospace;
-}
-.sdkv-vchip:hover { border-color: var(--accent); color: var(--text2); }
-.sdkv-vchip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* ── Version filter — dropdown ────────────────────────────────────────────── */
+.sdkv-vf-wrap { position: relative; }
 
-/* ── Group-by-game rows ───────────────────────────────────────────────────── */
-.sdkv-group-header td {
-  background: var(--surface2); padding: 7px 14px;
-  border-top: 2px solid var(--border);
-  border-bottom: 1px solid var(--border);
+.sdkv-vf-trigger {
+  padding: 6px 12px; border-radius: 6px; font-size: 12.5px; font-weight: 500;
+  border: 1px solid var(--border2); background: var(--input-bg);
+  color: var(--text2); cursor: pointer; white-space: nowrap;
+  transition: border-color .15s, color .15s;
 }
-.sdkv-group-header:first-child td { border-top: none; }
-.sdkv-group-name {
+.sdkv-vf-trigger:hover  { border-color: var(--accent); color: var(--text); }
+.sdkv-vf-trigger.active { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.08); }
+
+.sdkv-vf-panel {
+  display: none;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  min-width: 320px; max-height: 280px;
+  overflow-y: auto;
+}
+.sdkv-vf-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.sdkv-vf-panel-title { font-size: 12px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: .5px; }
+.sdkv-vf-all-btn {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: none; border: none; cursor: pointer; padding: 2px 6px;
+  border-radius: 4px; transition: background .15s;
+}
+.sdkv-vf-all-btn:hover { background: rgba(108,99,255,.12); }
+
+/* 3-column checkbox grid */
+.sdkv-vf-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 2px; padding: 8px 10px;
+}
+.sdkv-vf-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 8px; border-radius: 5px; cursor: pointer;
+  font-size: 12px; font-family: monospace; color: var(--text2);
+  transition: background .12s;
+}
+.sdkv-vf-item:hover { background: var(--surface2); }
+.sdkv-vf-item.active { background: rgba(108,99,255,.1); color: var(--accent); }
+.sdkv-vf-item input[type="checkbox"] {
+  accent-color: var(--accent); width: 13px; height: 13px; flex-shrink: 0; cursor: pointer;
+}
+
+/* ── Merged-cell game column ──────────────────────────────────────────────── */
+.sdkv-game-cell {
+  vertical-align: middle;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  min-width: 160px; max-width: 220px;
+}
+.sdkv-game-name {
   font-size: 13px; font-weight: 700; color: var(--text);
-  margin-right: 8px;
+  line-height: 1.3; word-break: break-word;
 }
-.sdkv-group-gid {
-  font-family: monospace; font-size: 11px; font-weight: 500;
-  color: var(--text3); background: var(--surface);
-  border: 1px solid var(--border2); border-radius: 4px;
-  padding: 1px 6px; margin-right: 8px;
+.sdkv-game-id-tag {
+  font-family: monospace; font-size: 11px; color: var(--text3);
+  margin-top: 3px;
 }
-.sdkv-group-count {
-  font-size: 11px; color: var(--text3);
-  background: rgba(108,99,255,.1); color: var(--accent);
-  padding: 1px 7px; border-radius: 10px; font-weight: 600;
-}
-.sdkv-sub-row td:first-child { padding-left: 28px; }
-.sdkv-sub-row:last-of-type td { border-bottom: 2px solid var(--border); }
-.sdkv-detail-table tbody .sdkv-sub-row:hover { background: var(--surface2); }
+.sdkv-platform-td { white-space: nowrap; }
+
+/* ── Group hover highlight ────────────────────────────────────────────────── */
+.sdkv-detail-table tbody tr.sdkv-row-hover td { background: rgba(108,99,255,.07); }
+[data-theme="light"] .sdkv-detail-table tbody tr.sdkv-row-hover td { background: rgba(67,56,202,.06); }
