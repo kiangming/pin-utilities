@@ -120,7 +120,7 @@ def fetch_game_list() -> List[Dict]:
         status = (r.get("status") or "").upper()
         if status not in ACTIVE_STATUSES:
             continue
-        gid = r.get("game_id") or r.get("id") or r.get("gameId")
+        gid = r.get("game_id") or r.get("product_code") or r.get("id") or r.get("gameId")
         if not gid:
             continue
         games.append({
