@@ -286,3 +286,59 @@
   border-top: 1px solid var(--border); background: var(--surface2);
   display: flex; justify-content: space-between;
 }
+
+/* ── Sortable column headers ──────────────────────────────────────────────── */
+.sdkv-th-sort {
+  cursor: pointer; user-select: none;
+}
+.sdkv-th-sort:hover { color: var(--text2); }
+.sdkv-sort-icon {
+  display: inline-block; margin-left: 4px; font-size: 11px;
+  color: var(--text3); opacity: .6;
+}
+.sdkv-sort-icon.active { color: var(--accent); opacity: 1; }
+
+/* ── Version filter chips ─────────────────────────────────────────────────── */
+.sdkv-version-filters {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  margin-bottom: 10px; flex-shrink: 0;
+}
+.sdkv-vf-label {
+  font-size: 11px; font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .5px; margin-right: 2px;
+  white-space: nowrap;
+}
+.sdkv-vchip {
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border2); color: var(--text3);
+  background: none; transition: all .15s; white-space: nowrap;
+  font-family: monospace;
+}
+.sdkv-vchip:hover { border-color: var(--accent); color: var(--text2); }
+.sdkv-vchip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* ── Group-by-game rows ───────────────────────────────────────────────────── */
+.sdkv-group-header td {
+  background: var(--surface2); padding: 7px 14px;
+  border-top: 2px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.sdkv-group-header:first-child td { border-top: none; }
+.sdkv-group-name {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  margin-right: 8px;
+}
+.sdkv-group-gid {
+  font-family: monospace; font-size: 11px; font-weight: 500;
+  color: var(--text3); background: var(--surface);
+  border: 1px solid var(--border2); border-radius: 4px;
+  padding: 1px 6px; margin-right: 8px;
+}
+.sdkv-group-count {
+  font-size: 11px; color: var(--text3);
+  background: rgba(108,99,255,.1); color: var(--accent);
+  padding: 1px 7px; border-radius: 10px; font-weight: 600;
+}
+.sdkv-sub-row td:first-child { padding-left: 28px; }
+.sdkv-sub-row:last-of-type td { border-bottom: 2px solid var(--border); }
+.sdkv-detail-table tbody .sdkv-sub-row:hover { background: var(--surface2); }

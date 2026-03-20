@@ -5,14 +5,20 @@
 const SdkVersionPanel = (() => {
   let _booted = false;
   let _summaryData = null;
-  let _detailData = null;
-  let _activeView = 'summary';
-  let _filter = { platform: '', status: '', search: '' };
+  let _detailData  = null;
+  let _activeView  = 'summary';
+  let _filter = {
+    platform: '', status: '', search: '',
+    latestVersions: new Set(),
+    stableVersions: new Set(),
+  };
+  let _sortField = 'adoption';
+  let _sortDir   = 'desc';
 
   const PLATFORM_ICON = { android: '🤖', ios: '🍎', windows: '🖥️' };
-  const DONUT_COLORS = ['#6c63ff', '#22d3ee', '#a78bfa', '#f59e0b', '#34d399', '#f87171'];
+  const DONUT_COLORS  = ['#6c63ff', '#22d3ee', '#a78bfa', '#f59e0b', '#34d399', '#f87171'];
 
-  // ── Public API ──────────────────────────────────────────────────────────────
+  // ── Public API ───────────────────────────────────────────────────────────────
 
   async function boot() {
     _booted = true;
@@ -29,6 +35,8 @@ const SdkVersionPanel = (() => {
       ]);
       _summaryData = summaryRes;
       _detailData  = detailRes;
+      _filter.latestVersions = new Set();
+      _filter.stableVersions = new Set();
       _render();
     } catch (e) {
       _showError(e.message);
@@ -55,7 +63,29 @@ const SdkVersionPanel = (() => {
     _renderDetail();
   }
 
-  // ── Private ─────────────────────────────────────────────────────────────────
+  function setSortField(field) {
+    if (_sortField === field) {
+      _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      _sortField = field;
+      _sortDir   = field === 'adoption' ? 'desc' : 'asc';
+    }
+    _renderDetail();
+  }
+
+  function toggleVersionFilter(type, ver) {
+    const set = type === 'latest' ? _filter.latestVersions : _filter.stableVersions;
+    if (set.has(ver)) set.delete(ver); else set.add(ver);
+    _renderDetail();
+  }
+
+  function toggleVersionAll(type) {
+    if (type === 'latest') _filter.latestVersions.clear();
+    else _filter.stableVersions.clear();
+    _renderDetail();
+  }
+
+  // ── Private ──────────────────────────────────────────────────────────────────
 
   function _render() {
     _renderSummary();
@@ -80,7 +110,7 @@ const SdkVersionPanel = (() => {
     el.textContent = ts ? '🕐 Synced: ' + _fmtDatetime(ts) : '';
   }
 
-  // ── Summary rendering ───────────────────────────────────────────────────────
+  // ── Summary rendering ────────────────────────────────────────────────────────
 
   function _renderSummary() {
     const el = document.getElementById('sdkv-summary-content');
@@ -98,7 +128,6 @@ const SdkVersionPanel = (() => {
       </div>
       ${mismatch_games?.length ? _mismatchCard(mismatch_games) : ''}
     `;
-    // Init donut với platform đầu tiên có data
     const firstPlatform = Object.keys(version_distribution || {})[0] || 'android';
     _switchDistTab(firstPlatform);
   }
@@ -143,7 +172,6 @@ const SdkVersionPanel = (() => {
   }
 
   function _switchDistTab(platform) {
-    // Update active tab
     document.querySelectorAll('.sdkv-dist-tab').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.p === platform);
     });
@@ -157,7 +185,6 @@ const SdkVersionPanel = (() => {
       return;
     }
 
-    // Build conic-gradient segments
     let deg = 0;
     const segments = versions.map((v, i) => {
       const start = deg;
@@ -167,8 +194,6 @@ const SdkVersionPanel = (() => {
     });
     const gradient = `conic-gradient(${segments.join(', ')})`;
     const topVer = versions[0];
-    const centerPct = topVer ? topVer.pct + '%' : '';
-    const centerLabel = topVer ? _esc(topVer.version) : '';
 
     const legend = versions.map((v, i) => `
       <div class="sdkv-legend-item">
@@ -183,8 +208,8 @@ const SdkVersionPanel = (() => {
         <div class="sdkv-donut-container">
           <div class="sdkv-donut-ring" style="background:${gradient}"></div>
           <div class="sdkv-donut-hole">
-            <span class="sdkv-donut-center-pct">${centerPct}</span>
-            <span class="sdkv-donut-center-label">${centerLabel}</span>
+            <span class="sdkv-donut-center-pct">${topVer ? topVer.pct + '%' : ''}</span>
+            <span class="sdkv-donut-center-label">${topVer ? _esc(topVer.version) : ''}</span>
           </div>
         </div>
         <div class="sdkv-dist-legend">${legend}</div>
@@ -245,31 +270,93 @@ const SdkVersionPanel = (() => {
     </div>`;
   }
 
-  // ── Detail rendering ─────────────────────────────────────────────────────────
+  // ── Detail rendering ──────────────────────────────────────────────────────────
 
-  function _renderDetail() {
-    const el = document.getElementById('sdkv-detail-content');
-    if (!el) return;
-    if (!_detailData) {
-      el.innerHTML = _emptyState('Chưa có dữ liệu.');
-      return;
+  function _getVersionOptions(field) {
+    return [...new Set((_detailData?.items || []).map(i => i[field]).filter(Boolean))].sort();
+  }
+
+  function _applyFilters(items) {
+    const s = _filter.search.toLowerCase();
+    return items.filter(i => {
+      if (_filter.platform && i.platform !== _filter.platform) return false;
+      if (_filter.status   && i.status   !== _filter.status)   return false;
+      if (s && !(i.game_id||'').toLowerCase().includes(s) && !(i.product_name||'').toLowerCase().includes(s)) return false;
+      if (_filter.latestVersions.size && !_filter.latestVersions.has(i.latest_version)) return false;
+      if (_filter.stableVersions.size && !_filter.stableVersions.has(i.stable_version)) return false;
+      return true;
+    });
+  }
+
+  function _groupByGame(items) {
+    const map = new Map();
+    for (const item of items) {
+      const gid = item.game_id;
+      if (!map.has(gid)) {
+        map.set(gid, { game_id: gid, product_name: item.product_name || '', rows: [] });
+      }
+      map.get(gid).rows.push(item);
     }
+    return [...map.values()];
+  }
 
-    // Client-side filter (nhanh hơn gọi API lại)
-    let items = _detailData.items || [];
-    if (_filter.platform) items = items.filter(i => i.platform === _filter.platform);
-    if (_filter.status)   items = items.filter(i => i.status === _filter.status);
-    if (_filter.search)   items = items.filter(i => (i.game_id || '').toLowerCase().includes(_filter.search.toLowerCase()));
+  function _sortGroups(groups) {
+    return [...groups].sort((a, b) => {
+      let ka, kb;
+      if (_sortField === 'adoption') {
+        // sort by min adoption across platforms (worst platform)
+        ka = Math.min(...a.rows.map(r => r.latest_version_share_ratio ?? -1));
+        kb = Math.min(...b.rows.map(r => r.latest_version_share_ratio ?? -1));
+        return _sortDir === 'desc' ? kb - ka : ka - kb;
+      }
+      if (_sortField === 'game') {
+        ka = (a.product_name || a.game_id).toLowerCase();
+        kb = (b.product_name || b.game_id).toLowerCase();
+      } else if (_sortField === 'latest') {
+        ka = (a.rows[0]?.latest_version || '').toLowerCase();
+        kb = (b.rows[0]?.latest_version || '').toLowerCase();
+      } else if (_sortField === 'stable') {
+        ka = (a.rows[0]?.stable_version || '').toLowerCase();
+        kb = (b.rows[0]?.stable_version || '').toLowerCase();
+      } else { ka = kb = ''; }
+      return _sortDir === 'asc' ? ka.localeCompare(kb) : kb.localeCompare(ka);
+    });
+  }
 
-    const latestDate = items.length
-      ? items.reduce((max, i) => (!max || (i.latest_date || '') > max ? i.latest_date : max), '')
-      : null;
+  function _sortIcon(field) {
+    if (_sortField !== field) return '<span class="sdkv-sort-icon">⇅</span>';
+    return `<span class="sdkv-sort-icon active">${_sortDir === 'asc' ? '↑' : '↓'}</span>`;
+  }
 
-    const rows = items.map(row => {
+  function _renderVersionChips(allVersions, selectedSet, type) {
+    const allActive = selectedSet.size === 0;
+    const chips = allVersions.map(v => {
+      const active = selectedSet.has(v) ? 'active' : '';
+      return `<span class="sdkv-vchip ${active}" onclick="SdkVersionPanel.toggleVersionFilter('${type}', ${JSON.stringify(v)})">${_esc(v)}</span>`;
+    }).join('');
+    return `<span class="sdkv-vchip ${allActive ? 'active' : ''}" onclick="SdkVersionPanel.toggleVersionAll('${type}')">All</span>${chips}`;
+  }
+
+  function _renderGameGroup(group) {
+    const header = `
+      <tr class="sdkv-group-header">
+        <td colspan="5">
+          <span class="sdkv-group-name">${_esc(group.product_name || group.game_id)}</span>
+          ${group.product_name ? `<span class="sdkv-group-gid">${_esc(group.game_id)}</span>` : ''}
+          <span class="sdkv-group-count">${group.rows.length} platform${group.rows.length > 1 ? 's' : ''}</span>
+        </td>
+      </tr>`;
+
+    // sub-rows: sort platforms by adoption desc within group
+    const sortedRows = [...group.rows].sort((a, b) =>
+      (b.latest_version_share_ratio ?? -1) - (a.latest_version_share_ratio ?? -1)
+    );
+
+    const rows = sortedRows.map(row => {
       const ratio = row.latest_version_share_ratio ?? null;
-      const fillClass = row.status === 'crit' ? 'crit' : row.status === 'warn' ? 'warn' : '';
-      return `<tr>
-        <td class="game-id">${_esc(row.game_id)}</td>
+      const fillClass = row.status === 'critical' ? 'crit' : row.status === 'warn' ? 'warn' : '';
+      return `
+      <tr class="sdkv-sub-row">
         <td><span class="sdkv-platform-icon">${PLATFORM_ICON[row.platform] || '💻'}</span> ${_esc(row.platform)}</td>
         <td class="sdkv-version-tag">${_esc(row.latest_version || '—')}</td>
         <td class="sdkv-adoption-cell">
@@ -288,19 +375,42 @@ const SdkVersionPanel = (() => {
       </tr>`;
     }).join('');
 
-    const emptyRow = items.length === 0
-      ? `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text3)">Không có kết quả phù hợp</td></tr>`
+    return header + rows;
+  }
+
+  function _renderDetail() {
+    const el = document.getElementById('sdkv-detail-content');
+    if (!el) return;
+    if (!_detailData) {
+      el.innerHTML = _emptyState('Chưa có dữ liệu.');
+      return;
+    }
+
+    const allLatest = _getVersionOptions('latest_version');
+    const allStable = _getVersionOptions('stable_version');
+
+    const filtered = _applyFilters(_detailData.items || []);
+    const groups   = _sortGroups(_groupByGame(filtered));
+
+    const tableRows = groups.map(g => _renderGameGroup(g)).join('');
+    const emptyRow  = groups.length === 0
+      ? `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text3)">Không có kết quả phù hợp</td></tr>`
       : '';
+
+    const latestDate = filtered.length
+      ? filtered.reduce((max, i) => (!max || (i.latest_date || '') > max ? i.latest_date : max), '')
+      : null;
 
     el.innerHTML = `
       <div class="sdkv-filters">
-        <input  class="sdkv-search"  id="sdkv-search" type="text" placeholder="🔍 Search game_id..."
-                value="${_esc(_filter.search)}" oninput="SdkVersionPanel.applySearch()" />
+        <input class="sdkv-search" id="sdkv-search" type="text"
+               placeholder="🔍 Search game / product..."
+               value="${_esc(_filter.search)}" oninput="SdkVersionPanel.applySearch()" />
         <select class="sdkv-select" id="sdkv-filter-platform" onchange="SdkVersionPanel.applyFilter()">
           <option value="">Platform: All</option>
-          <option value="android"  ${_filter.platform==='android'  ? 'selected':''}>🤖 Android</option>
-          <option value="ios"      ${_filter.platform==='ios'      ? 'selected':''}>🍎 iOS</option>
-          <option value="windows"  ${_filter.platform==='windows'  ? 'selected':''}>🖥️ Windows</option>
+          <option value="android" ${_filter.platform==='android' ? 'selected':''}>🤖 Android</option>
+          <option value="ios"     ${_filter.platform==='ios'     ? 'selected':''}>🍎 iOS</option>
+          <option value="windows" ${_filter.platform==='windows' ? 'selected':''}>🖥️ Windows</option>
         </select>
         <select class="sdkv-select" id="sdkv-filter-status" onchange="SdkVersionPanel.applyFilter()">
           <option value="">Status: All</option>
@@ -309,34 +419,46 @@ const SdkVersionPanel = (() => {
           <option value="critical" ${_filter.status==='critical' ? 'selected':''}>🔴 Critical (&lt;50%)</option>
         </select>
       </div>
+      ${allLatest.length ? `
+      <div class="sdkv-version-filters">
+        <span class="sdkv-vf-label">Latest:</span>
+        ${_renderVersionChips(allLatest, _filter.latestVersions, 'latest')}
+      </div>` : ''}
+      ${allStable.length ? `
+      <div class="sdkv-version-filters">
+        <span class="sdkv-vf-label">Stable:</span>
+        ${_renderVersionChips(allStable, _filter.stableVersions, 'stable')}
+      </div>` : ''}
       <div class="sdkv-detail-table-wrap">
         <table class="sdkv-detail-table">
           <thead><tr>
-            <th>Game ID</th>
-            <th>Platform</th>
-            <th>Latest Version</th>
-            <th>Adoption Rate</th>
-            <th>Stable Version</th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('game')">
+              Product / Game ${_sortIcon('game')}
+            </th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('latest')">
+              Latest Version ${_sortIcon('latest')}
+            </th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('adoption')">
+              Adoption Rate ${_sortIcon('adoption')}
+            </th>
+            <th class="sdkv-th-sort" onclick="SdkVersionPanel.setSortField('stable')">
+              Stable Version ${_sortIcon('stable')}
+            </th>
             <th>Status</th>
           </tr></thead>
-          <tbody>${rows}${emptyRow}</tbody>
+          <tbody>${tableRows}${emptyRow}</tbody>
         </table>
       </div>
       <div class="sdkv-detail-footer">
-        <span>${items.length} records</span>
+        <span>${filtered.length} records · ${groups.length} games</span>
         <span>${latestDate ? '📅 Snapshot: ' + _fmtDate(latestDate) : ''}</span>
       </div>`;
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────────
 
   function _statusBadge(status) {
-    const map = {
-      ok:       '✅ OK',
-      warn:     '⚠️ Warn',
-      critical: '🔴 Critical',
-      unknown:  '— Unknown',
-    };
+    const map = { ok: '✅ OK', warn: '⚠️ Warn', critical: '🔴 Critical', unknown: '— Unknown' };
     return `<span class="sdkv-status ${status || 'unknown'}">${map[status] || '—'}</span>`;
   }
 
@@ -369,14 +491,10 @@ const SdkVersionPanel = (() => {
     } catch { return iso; }
   }
 
-  // ── Exposed internals (called from inline HTML) ──────────────────────────────
   return {
-    _booted,
-    boot,
-    fetchData,
-    switchView,
-    applySearch,
-    applyFilter,
+    boot, fetchData, switchView,
+    applySearch, applyFilter,
+    setSortField, toggleVersionFilter, toggleVersionAll,
     _switchDistTab,
   };
 })();

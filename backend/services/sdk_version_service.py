@@ -8,7 +8,7 @@ import httpx
 from backend.config import settings
 
 TABLE = "sdk_version_snapshots"
-SELECT_ALL = "game_id,platform,latest_version,latest_version_records,latest_version_share_ratio,stable_version,stable_version_share_ratio,latest_date,synced_at"
+SELECT_ALL = "game_id,platform,product_name,latest_version,latest_version_records,latest_version_share_ratio,stable_version,stable_version_share_ratio,latest_date,synced_at"
 
 
 def _supabase_headers() -> dict:
@@ -161,11 +161,13 @@ def build_detail(
             continue
         if status_filter and st != status_filter:
             continue
-        if search and search.lower() not in (s.get("game_id") or "").lower():
+        q = search.lower()
+        if search and q not in (s.get("game_id") or "").lower() and q not in (s.get("product_name") or "").lower():
             continue
 
         items.append({
             "game_id": s.get("game_id"),
+            "product_name": s.get("product_name"),
             "platform": s.get("platform"),
             "latest_version": s.get("latest_version"),
             "latest_version_records": s.get("latest_version_records"),

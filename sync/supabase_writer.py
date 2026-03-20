@@ -14,7 +14,7 @@ TABLE = "sdk_version_snapshots"
 
 # Chỉ giữ các cột tồn tại trong bảng
 ALLOWED_COLUMNS = {
-    "game_id", "platform",
+    "game_id", "platform", "product_name",
     "latest_version", "latest_version_records", "latest_version_share_ratio",
     "stable_version", "stable_version_share_ratio",
     "latest_date", "updated_time", "synced_at",
@@ -41,10 +41,17 @@ def upsert_batch(records: List[Dict]) -> None:
 
     # Filter chỉ giữ cột hợp lệ + thêm synced_at
     now = datetime.now(timezone.utc).isoformat()
-    rows = [
+    cleaned = [
         {k: v for k, v in {**r, "synced_at": now}.items() if k in ALLOWED_COLUMNS}
         for r in records
     ]
+
+    # Deduplicate theo (game_id, platform) — giữ record cuối cùng
+    seen: Dict = {}
+    for row in cleaned:
+        key = (row.get("game_id"), row.get("platform"))
+        seen[key] = row
+    rows = list(seen.values())
 
     url = f"{SUPABASE_URL}/rest/v1/{TABLE}?on_conflict=game_id,platform"
     with httpx.Client(timeout=30) as client:

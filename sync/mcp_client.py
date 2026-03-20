@@ -100,6 +100,36 @@ def _extract_records(rpc_response: Dict) -> List[Dict]:
     return records
 
 
+ACTIVE_STATUSES = {"ACTIVE", "NOT_RELEASED"}
+
+
+def fetch_game_list() -> List[Dict]:
+    """
+    Gọi MCP tool game_list, trả về list {"game_id", "product_name"}
+    cho các game có status ACTIVE hoặc NOT_RELEASED.
+    """
+    response = _call_jsonrpc("tools/call", {
+        "name": "game_list",
+        "arguments": {
+            "fields": ["game_id", "product_name", "status"],
+        },
+    })
+    records = _extract_records(response)
+    games = []
+    for r in records:
+        status = (r.get("status") or "").upper()
+        if status not in ACTIVE_STATUSES:
+            continue
+        gid = r.get("game_id") or r.get("id") or r.get("gameId")
+        if not gid:
+            continue
+        games.append({
+            "game_id": str(gid),
+            "product_name": r.get("product_name") or r.get("name") or "",
+        })
+    return games
+
+
 def fetch_sdk_snapshot(game_id: str, platform: Optional[str] = None) -> List[Dict]:
     """
     Gọi MCP sdk_version_snapshot cho 1 game_id.
