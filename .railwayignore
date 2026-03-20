@@ -1,3 +1,6 @@
+# Sync script — chạy trên server nội bộ, KHÔNG deploy lên Railway
+sync/
+
 # Legacy files — không cần thiết trên Railway
 serve.py
 proxy.py

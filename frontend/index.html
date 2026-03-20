@@ -397,6 +397,7 @@
 </style>
   <!-- Pipeline feature CSS -->
   <link rel="stylesheet" href="css/pipeline.css">
+  <link rel="stylesheet" href="css/sdk-versions.css">
 </head>
 <body>
 <div class="app-shell">
@@ -446,6 +447,10 @@
   <a class="nav-item" onclick="selectTool('pipeline', this)" href="#">
     <span class="nav-item-icon">🚀</span>
     Game Launching Pipeline
+  </a>
+  <a class="nav-item" onclick="selectTool('sdk-versions', this)" href="#">
+    <span class="nav-item-icon">📦</span>
+    SDK Versions
   </a>
   <hr class="nav-section-divider">
 </nav>
@@ -780,6 +785,36 @@
 
 
 </div><!-- /tool-pipeline -->
+
+<!-- ── Tool: SDK Version Management ─────────────────────────────────────── -->
+<div id="tool-sdk-versions" class="tool-panel" style="display:none;">
+  <div class="sdkv-panel">
+
+    <!-- Header -->
+    <div class="sdkv-header">
+      <div class="sdkv-title">📦 SDK Version Management</div>
+      <div class="sdkv-header-right">
+        <span class="sdkv-sync-time" id="sdkv-sync-time"></span>
+        <button class="sdkv-btn-refresh" onclick="SdkVersionPanel.fetchData()">🔄 Refresh</button>
+      </div>
+    </div>
+
+    <!-- View tabs -->
+    <div class="sdkv-view-tabs">
+      <button class="sdkv-vtab active" id="sdkv-vtab-summary"
+              onclick="SdkVersionPanel.switchView('summary')">📊 Summary</button>
+      <button class="sdkv-vtab" id="sdkv-vtab-detail"
+              onclick="SdkVersionPanel.switchView('detail')">📋 Detail</button>
+    </div>
+
+    <!-- Summary content -->
+    <div id="sdkv-summary-content" class="sdkv-scroll-area"></div>
+
+    <!-- Detail content -->
+    <div id="sdkv-detail-content" class="sdkv-scroll-area" style="display:none;"></div>
+
+  </div>
+</div><!-- /tool-sdk-versions -->
 
 </div><!-- /app-content -->
 </div><!-- /app-body -->
@@ -1716,6 +1751,7 @@ function exportCSV() {
 <script src="js/pipeline/stats-renderer.js"></script>
 <script src="js/pipeline/renderer.js"></script>
 <script src="js/pipeline/pipeline.js"></script>
+<script src="js/sdk-versions.js"></script>
 <script>
 // Load user info vào header
 ApiClient.me().then(user => {
@@ -1731,12 +1767,17 @@ ApiClient.me().then(user => {
 // Boot pipeline panel khi tab được mở lần đầu
 (function() {
   let _pipelineBooted = false;
+  let _sdkvBooted = false;
   const _origSelectTool = typeof selectTool === 'function' ? selectTool : null;
   window.selectTool = function(tool, el) {
     if (_origSelectTool) _origSelectTool(tool, el);
     if (tool === 'pipeline' && !_pipelineBooted) {
       _pipelineBooted = true;
       PipelinePanel.boot();
+    }
+    if (tool === 'sdk-versions' && !_sdkvBooted) {
+      _sdkvBooted = true;
+      SdkVersionPanel.boot();
     }
   };
 })();

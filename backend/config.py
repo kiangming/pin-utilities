@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     # Sheets cache
     sheets_cache_ttl_seconds: int = 300   # 5 minutes
 
+    # Supabase (SDK Version Management)
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    adoption_warn_threshold: int = 80
+    adoption_critical_threshold: int = 50
+
     # Server — Railway inject PORT tự động
     host: str = "0.0.0.0"
     port: int = 8080          # bị override bởi env var PORT trên Railway
