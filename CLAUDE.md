@@ -551,15 +551,96 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - `.theme-picker` với 5 `.theme-dot` trong header
 - `.left-nav { background: var(--nav-bg) }` — bỏ hardcode `#13151f`
 - `.nav-item.active { color: var(--text) }` — bỏ hardcode `#fff`
+- Light theme tăng contrast: `--text: #0d0f1a`, `--text2: #2e3358`, `--text3: #5a6090`, `--accent: #4338ca`
+- `pipeline.css`: thêm `[data-theme="light"]` overrides cho pastel alert colors (invisible on light bg):
+  - Urgent `#fca5a5` → `#b91c1c`, Warning `#fde68a` → `#92400e`, Info `#a5f3fc` → `#0e7490`
+  - Áp dụng cho: `.pls-alert-title`, `.pls-alert-evtype`, `.pls-alert-days`
 
 ---
 
-## 16. Hướng phát triển tiếp theo (Backlog)
+## 16. Tool 4: SDK Version Management
+
+> Design spec đầy đủ: `docs/sdk-version-management-design.md`
+> Status: **Confirmed — Pending Implementation**
+
+### 16.1 Tổng quan
+- **Nav ID:** `tool-sdk-versions`
+- **Nav icon:** 📦
+- **Chức năng:** Dashboard thống kê SDK version adoption rate của các game theo platform
+- **Data source:** MCP `sdk_version_snapshot` (Bearer token) → Supabase → FastAPI → Frontend
+
+### 16.2 Kiến trúc
+```
+sync/ (server nội bộ, cron thủ công)
+  └── run_sync.py → MCP API → Supabase (upsert)
+
+backend/
+  ├── routers/sdk_versions.py       ← GET /api/sdk-versions/summary, /detail
+  └── services/sdk_version_service.py
+
+frontend/
+  ├── js/sdk-versions.js            ← SdkVersionPanel module
+  └── css/sdk-versions.css          ← prefix: sdkv-
+```
+
+### 16.3 Supabase table
+`sdk_version_snapshots` — `UNIQUE(game_id, platform)`, upsert strategy (1 row per game × platform).
+
+### 16.4 API Endpoints
+| Method | Path | Mô tả |
+|---|---|---|
+| GET | `/api/sdk-versions/summary` | KPI cards, version distribution, platform usage, mismatch list |
+| GET | `/api/sdk-versions/detail` | Bảng chi tiết, filter by platform/status/search |
+
+### 16.5 Status thresholds (env var)
+| Status | Condition |
+|---|---|
+| ✅ OK | `latest_version_share_ratio` ≥ `ADOPTION_WARN_THRESHOLD` (default 80) |
+| ⚠️ WARN | ≥ `ADOPTION_CRITICAL_THRESHOLD` (default 50) và < warn |
+| 🔴 CRIT | < `ADOPTION_CRITICAL_THRESHOLD` |
+
+### 16.6 Dashboard UI — 2 tabs
+**Summary tab:**
+- 4 KPI cards: Total Games, Fully Updated, Warning, Critical
+- Version Distribution: donut + legend per platform (Android/iOS/Windows)
+- Platform Usage: horizontal bar chart theo total login records
+- Latest ≠ Stable: bảng game có version mismatch
+
+**Detail tab:**
+- Filter: search game_id, dropdown platform, dropdown status
+- Bảng: game_id | platform | latest version | adoption bar | stable version | status badge
+- Footer: tổng records + data snapshot date
+
+### 16.7 CSS & Theme
+- Prefix `sdkv-` — không conflict với `pl-`, `pls-`
+- Toàn bộ màu dùng CSS variables
+- Light theme overrides cho status colors: ok=`#15803d`, warn=`#92400e`, crit=`#b91c1c`
+
+### 16.8 Security rules
+- `MCP_BEARER_TOKEN` chỉ trong `sync/.env` — KHÔNG commit, KHÔNG lên Railway
+- `SUPABASE_SERVICE_KEY` trong Railway env vars + `sync/.env`
+- Frontend KHÔNG gọi Supabase trực tiếp — chỉ qua FastAPI
+- `/api/sdk-versions/*` dùng `require_session()` (giống các router khác)
+- `sync/` thêm vào `.railwayignore`
+
+### 16.9 Anti-regression rules cho tool này
+| Rule | Mô tả |
+|---|---|
+| **AX-14** | Frontend KHÔNG import Supabase client — chỉ gọi `/api/sdk-versions/*` |
+| **AX-15** | `sync/` KHÔNG deploy lên Railway — thêm vào `.railwayignore` |
+| **AX-16** | CSS prefix `sdkv-` giữ nguyên, không conflict với `pl-`, `pls-` |
+| **AX-17** | Status được tính server-side dựa trên env var threshold, không hardcode |
+
+---
+
+## 17. Hướng phát triển tiếp theo (Backlog)
 
 - **v4.3:** Preset date ranges ("Tháng này", "Q2 2026", "30 ngày tới")
 - **v4.3:** Export filtered data to Excel/CSV
 - **v4.3:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
+- **v5.0:** SDK Version Management implementation (xem Section 16)
 - **Future:** Date filter cho tab "Closed"
 - **Future:** Lưu date range preference vào localStorage
 - **Future:** Sorting/grouping trong Stats timeline theo owner hoặc market
 - **Future:** Multi-user session management / role-based access
+- **Future:** SDK Version — lịch sử adoption rate (lưu nhiều snapshot)
