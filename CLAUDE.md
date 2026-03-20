@@ -38,14 +38,23 @@ PIN/
 │       ├── session_store.py     ← create/get/update/delete/purge_expired sessions
 │       ├── oauth_service.py     ← build_auth_url, exchange_code, refresh_access_token, fetch_userinfo
 │       ├── sheets_service.py    ← TTLCache fetch_tab/fetch_all/invalidate, parse_release/parse_close
-│       └── bootstrap_service.py ← fetch_config (curl subprocess), start_batch (background thread), get_job
+│       ├── bootstrap_service.py ← fetch_config (curl subprocess), start_batch (background thread), get_job
+│       └── sdk_version_service.py ← fetch_all_snapshots, build_summary, build_detail
+├── sync/                        ← Chạy thủ công / cron, KHÔNG deploy lên Railway
+│   ├── run_sync.py              ← Entry point: MCP game_list → sdk_version_snapshot → Supabase
+│   ├── mcp_client.py            ← JSON-RPC 2.0 over HTTP, fetch_game_list, fetch_sdk_snapshot
+│   ├── supabase_writer.py       ← upsert_batch via REST API (merge-duplicates)
+│   ├── requirements.txt         ← httpx, python-dotenv
+│   └── .env                     ← MCP_BASE_URL, MCP_BEARER_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY (KHÔNG commit)
 ├── frontend/
 │   ├── index.html               ← Main app (tất cả tools)
 │   ├── login.html               ← Google login page
 │   ├── css/
-│   │   └── pipeline.css         ← Pipeline panel styles (prefix: pl-, pls-)
+│   │   ├── pipeline.css         ← Pipeline panel styles (prefix: pl-, pls-)
+│   │   └── sdk-versions.css     ← SDK Version Management styles (prefix: sdkv-)
 │   └── js/
 │       ├── api-client.js        ← Wrapper fetch → backend, auto-redirect 401 → /login
+│       ├── sdk-versions.js      ← SdkVersionPanel module (v2.0)
 │       └── pipeline/
 │           ├── data-store.js    ← PipelineDataStore: in-memory + localStorage
 │           ├── stats-renderer.js← PipelineStats: Stats Tab — KPI, alert, timeline (v3.0)
@@ -103,6 +112,8 @@ Google → GET /auth/callback?code=...&state=...
 | GET | `/api/sheets/{tab}` | Fetch 1 tab từ Google Sheets |
 | GET | `/api/sheets/all?sheetUrl=` | Fetch tất cả tabs |
 | POST | `/api/sheets/refresh` | Invalidate TTLCache |
+| GET | `/api/sdk-versions/summary` | KPI, version distribution, platform usage, mismatch list |
+| GET | `/api/sdk-versions/detail?platform=&status=&search=` | Bảng chi tiết SDK versions |
 
 ### 2.4 main.py — App Setup
 - Mount `frontend/` as `StaticFiles`
@@ -160,6 +171,13 @@ const PROXY = '';  // same-origin — backend FastAPI xử lý /api/*
   2. `startBatch()` đọc file qua `file.text()`, parse game IDs client-side
   3. Gọi `POST /api/batch` với `{ game_ids: [...], countries: [...] }`
   4. Poll `GET /api/batch/status?jobId=` cho đến khi done
+
+### Tool 4: SDK Version Management
+- **Nav ID:** `tool-sdk-versions`
+- **Chức năng:** Dashboard thống kê SDK version adoption rate của các game theo platform
+- **Data source:** MCP `sdk_version_snapshot` (sync script) → Supabase → FastAPI → Frontend
+- **Lazy boot:** `selectTool('sdk-versions')` → `SdkVersionPanel.boot()`
+- **2 views:** Summary (KPI + charts) / Detail (bảng merged-cell + filter)
 
 ### Tool 3: Game Launching Pipeline
 - **Nav ID:** `tool-pipeline`
@@ -534,6 +552,8 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.0** | **Mar 2026** | **Frontend/Backend split, FastAPI, server-side OAuth, Railway deploy** |
 | **v4.1** | **Mar 2026** | **SDK Features Statistic: file upload thay filepath; fix PROXY = '' same-origin** |
 | **v4.2** | **Mar 2026** | **5-theme switcher (dark/light/midnight/ocean/coffee), left nav dùng CSS vars** |
+| **v4.3** | **Mar 2026** | **Tool 4: SDK Version Management — full implementation** |
+| **v4.4** | **Mar 2026** | **Detail view redesign: merged cells, dropdown filter, fix search focus, group hover** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -556,41 +576,60 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
   - Urgent `#fca5a5` → `#b91c1c`, Warning `#fde68a` → `#92400e`, Info `#a5f3fc` → `#0e7490`
   - Áp dụng cho: `.pls-alert-title`, `.pls-alert-evtype`, `.pls-alert-days`
 
+### v4.3 chi tiết
+- **Tool 4 SDK Version Management:** `SdkVersionPanel` IIFE, 2 views (Summary/Detail)
+- **Sync script:** `sync/` — MCP JSON-RPC 2.0, fetch game_list + sdk_version_snapshot, upsert Supabase
+- **Backend:** `sdk_versions.py` router + `sdk_version_service.py`, `product_name` trong SELECT_ALL
+- **Supabase:** `sdk_version_snapshots` table, UNIQUE(game_id, platform), dedup trước upsert
+- **Fix:** MCP game_list dùng `product_code` làm fallback game_id (field `game_id` trả về null)
+
+### v4.4 chi tiết
+- **Fix search focus:** Tách shell render (1 lần) khỏi table render — `applySearch()` chỉ update tbody
+- **Version filter dropdown:** Custom dropdown absolute, 3-column checkbox grid, click-outside handler
+- **Merged cells:** `<td rowspan="N">` cho cột Product/Game, border-left màu worst status
+- **Group hover:** Event delegation trên tbody — highlight toàn bộ rows cùng game khi hover
+- **Sort icons:** In-place update `<span id="sdkv-si-{field}">` — không re-render thead
+
 ---
 
-## 16. Tool 4: SDK Version Management
+## 16. Tool 4: SDK Version Management — SdkVersionPanel v2.0
 
-> Design spec đầy đủ: `docs/sdk-version-management-design.md`
-> Status: **Confirmed — Pending Implementation**
+> Status: **Implemented & Deployed**
 
-### 16.1 Tổng quan
-- **Nav ID:** `tool-sdk-versions`
-- **Nav icon:** 📦
-- **Chức năng:** Dashboard thống kê SDK version adoption rate của các game theo platform
-- **Data source:** MCP `sdk_version_snapshot` (Bearer token) → Supabase → FastAPI → Frontend
-
-### 16.2 Kiến trúc
+### 16.1 Kiến trúc
 ```
-sync/ (server nội bộ, cron thủ công)
-  └── run_sync.py → MCP API → Supabase (upsert)
+sync/ (chạy thủ công / cron, KHÔNG deploy Railway)
+  run_sync.py
+    1. fetch_game_list()  → MCP tool "game_list" (filter ACTIVE/NOT_RELEASED)
+    2. fetch_sdk_snapshot(game_id) → MCP tool "sdk_version_snapshot" per game
+    3. upsert_batch()     → Supabase REST API (merge-duplicates, on_conflict=game_id,platform)
 
 backend/
-  ├── routers/sdk_versions.py       ← GET /api/sdk-versions/summary, /detail
-  └── services/sdk_version_service.py
+  routers/sdk_versions.py         ← GET /api/sdk-versions/summary, /detail
+  services/sdk_version_service.py ← fetch_all_snapshots, build_summary, build_detail
 
 frontend/
-  ├── js/sdk-versions.js            ← SdkVersionPanel module
-  └── css/sdk-versions.css          ← prefix: sdkv-
+  js/sdk-versions.js              ← SdkVersionPanel IIFE (v2.0)
+  css/sdk-versions.css            ← prefix: sdkv-
 ```
 
-### 16.3 Supabase table
-`sdk_version_snapshots` — `UNIQUE(game_id, platform)`, upsert strategy (1 row per game × platform).
+### 16.2 Supabase table: `sdk_version_snapshots`
+Columns: `game_id, platform, product_name, latest_version, latest_version_records, latest_version_share_ratio, stable_version, stable_version_share_ratio, latest_date, updated_time, synced_at`
+Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
-### 16.4 API Endpoints
-| Method | Path | Mô tả |
-|---|---|---|
-| GET | `/api/sdk-versions/summary` | KPI cards, version distribution, platform usage, mismatch list |
-| GET | `/api/sdk-versions/detail` | Bảng chi tiết, filter by platform/status/search |
+### 16.3 Sync script — mcp_client.py
+- MCP transport: JSON-RPC 2.0 over HTTP POST, supports SSE response parsing
+- `fetch_game_list()`: gọi tool `game_list`, filter ACTIVE/NOT_RELEASED
+  - game_id fallback: `game_id → product_code → id → gameId` (MCP thường trả `game_id: null`, ID thực ở `product_code`)
+  - product_name: `product_name → name → ""`
+- `fetch_sdk_snapshot(game_id)`: gọi tool `sdk_version_snapshot`
+- `ALLOWED_COLUMNS` filter trước khi upsert để tránh lỗi column không tồn tại
+- Dedup theo `(game_id, platform)` trước upsert tránh ON CONFLICT conflict
+
+### 16.4 Backend service
+- `SELECT_ALL` bao gồm `product_name`
+- `build_summary()`: KPI đếm `unique game_ids` (không phải records)
+- `build_detail()`: search match cả `game_id` lẫn `product_name`; trả về `product_name` trong items
 
 ### 16.5 Status thresholds (env var)
 | Status | Condition |
@@ -599,48 +638,84 @@ frontend/
 | ⚠️ WARN | ≥ `ADOPTION_CRITICAL_THRESHOLD` (default 50) và < warn |
 | 🔴 CRIT | < `ADOPTION_CRITICAL_THRESHOLD` |
 
-### 16.6 Dashboard UI — 2 tabs
-**Summary tab:**
-- 4 KPI cards: Total Games, Fully Updated, Warning, Critical
-- Version Distribution: donut + legend per platform (Android/iOS/Windows)
+### 16.6 Summary tab UI
+- 4 KPI cards: Total Games (unique game_ids), Fully Updated, Warning, Critical
+- Version Distribution: donut chart + legend per platform (Android/iOS/Windows), platform tabs
 - Platform Usage: horizontal bar chart theo total login records
 - Latest ≠ Stable: bảng game có version mismatch
 
-**Detail tab:**
-- Filter: search game_id, dropdown platform, dropdown status
-- Bảng: game_id | platform | latest version | adoption bar | stable version | status badge
-- Footer: tổng records + data snapshot date
+### 16.7 Detail tab — SdkVersionPanel v2.0
 
-### 16.7 CSS & Theme
-- Prefix `sdkv-` — không conflict với `pl-`, `pls-`
-- Toàn bộ màu dùng CSS variables
-- Light theme overrides cho status colors: ok=`#15803d`, warn=`#92400e`, crit=`#b91c1c`
+**Architecture — Fix search focus loss:**
+- `_buildDetailShell()`: render filter bar + table skeleton một lần duy nhất (`_detailRendered = true`)
+- `_applyAndRenderTable()`: chỉ update `<tbody>` và footer — KHÔNG rebuild filter bar
+- `applySearch()` / `applyFilter()` / `setSortField()` gọi `_applyAndRenderTable()`, không gọi `_renderDetail()`
 
-### 16.8 Security rules
+**Version filter — Custom dropdown:**
+- Trigger button: `"Latest: All ▾"` / `"v4.2.1 ▾"` / `"3 selected ▾"`
+- Panel: `position:absolute`, 3-column checkbox grid (`.sdkv-vf-grid`)
+- Click outside → đóng dropdown (`document.addEventListener('click', ...)` — đăng ký 1 lần qua `_eventsWired`)
+- `toggleDropdown(type)` public API
+
+**Merged cell table:**
+- Group by `game_id` → `_groupByGame()` → `_sortGroups()` → `_buildMergedRows()`
+- Cột Product/Game: `<td rowspan="N" class="sdkv-game-cell">` — vertical-align middle
+- Border-left 3px màu theo worst status của game: ok=`#22c55e`, warn=`#f59e0b`, crit=`#ef4444`
+- Sub-rows: Platform | Latest | Adoption bar | Stable | Status
+
+**Group hover highlight:**
+- `data-gid` attribute trên mỗi `<tr>`
+- Event delegation trên `tbody`: `mouseover` → highlight tất cả `tr[data-gid=X]`
+- `mouseleave` trên `tbody` → clear tất cả
+
+**Sort fields:** `game` (product_name/game_id), `latest`, `adoption` (default desc, sort by min across platforms), `stable`
+**Sort icons:** `<span id="sdkv-si-{field}">` — updated in-place, không re-render thead
+
+### 16.8 CSS Classes — sdk-versions.css (prefix: `sdkv-`)
+
+| Class | Mô tả |
+|---|---|
+| `.sdkv-vf-wrap` | `position:relative` wrapper cho dropdown |
+| `.sdkv-vf-trigger` | Dropdown trigger button, `.active` = accent border |
+| `.sdkv-vf-panel` | Absolute dropdown panel, hidden by default |
+| `.sdkv-vf-grid` | 3-column checkbox grid |
+| `.sdkv-vf-item` | Checkbox label, `.active` = accent bg |
+| `.sdkv-game-cell` | Merged rowspan cell — vertical-align middle |
+| `.sdkv-game-name` | Product name (bold) |
+| `.sdkv-game-id-tag` | Game ID dưới product name (monospace, muted) |
+| `.sdkv-row-hover` | Hover state cho toàn bộ rows của 1 game |
+| `.sdkv-th-sort` | Sortable header — cursor pointer |
+| `.sdkv-sort-icon` | Sort indicator, `.active` = accent color |
+
+### 16.9 Security rules
 - `MCP_BEARER_TOKEN` chỉ trong `sync/.env` — KHÔNG commit, KHÔNG lên Railway
 - `SUPABASE_SERVICE_KEY` trong Railway env vars + `sync/.env`
 - Frontend KHÔNG gọi Supabase trực tiếp — chỉ qua FastAPI
-- `/api/sdk-versions/*` dùng `require_session()` (giống các router khác)
-- `sync/` thêm vào `.railwayignore`
+- `/api/sdk-versions/*` dùng `require_session()`
+- `sync/` trong `.railwayignore`
 
-### 16.9 Anti-regression rules cho tool này
+### 16.10 Anti-regression rules
 | Rule | Mô tả |
 |---|---|
 | **AX-14** | Frontend KHÔNG import Supabase client — chỉ gọi `/api/sdk-versions/*` |
-| **AX-15** | `sync/` KHÔNG deploy lên Railway — thêm vào `.railwayignore` |
+| **AX-15** | `sync/` KHÔNG deploy lên Railway |
 | **AX-16** | CSS prefix `sdkv-` giữ nguyên, không conflict với `pl-`, `pls-` |
-| **AX-17** | Status được tính server-side dựa trên env var threshold, không hardcode |
+| **AX-17** | Status tính server-side từ env var threshold, không hardcode |
+| **AX-18** | `applySearch()` / `applyFilter()` gọi `_applyAndRenderTable()` — KHÔNG gọi `_renderDetail()` (sẽ mất focus input) |
+| **AX-19** | `_buildDetailShell()` render 1 lần duy nhất — KHÔNG rebuild khi filter thay đổi |
+| **AX-20** | game_id trong sync: dùng `product_code` làm fallback khi `game_id: null` từ MCP |
 
 ---
 
 ## 17. Hướng phát triển tiếp theo (Backlog)
 
-- **v4.3:** Preset date ranges ("Tháng này", "Q2 2026", "30 ngày tới")
-- **v4.3:** Export filtered data to Excel/CSV
-- **v4.3:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
-- **v5.0:** SDK Version Management implementation (xem Section 16)
-- **Future:** Date filter cho tab "Closed"
+- **v4.5:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
+- **v4.5:** Export filtered data to Excel/CSV (Pipeline + SDK Versions)
+- **v4.5:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
+- **v4.5:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
+- **Future:** Date filter cho tab Pipeline "Closed"
 - **Future:** Lưu date range preference vào localStorage
 - **Future:** Sorting/grouping trong Stats timeline theo owner hoặc market
 - **Future:** Multi-user session management / role-based access
-- **Future:** SDK Version — lịch sử adoption rate (lưu nhiều snapshot)
+- **Future:** SDK Version — lịch sử adoption rate (lưu nhiều snapshot theo ngày)
+- **Future:** SDK Version — alert khi adoption rate giảm đột ngột
