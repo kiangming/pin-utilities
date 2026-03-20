@@ -11,6 +11,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Dict, List
 
 from dotenv import load_dotenv
 
@@ -23,7 +24,7 @@ PLATFORMS = [p.strip() for p in os.getenv("PLATFORMS", "android,ios,windows").sp
 ERROR_THRESHOLD_PCT = float(os.getenv("ERROR_THRESHOLD_PCT", "20"))
 
 
-def load_game_ids(path: str = "game_ids.txt") -> list[str]:
+def load_game_ids(path: str = "game_ids.txt") -> List[str]:
     ids = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         line = line.strip()
@@ -32,7 +33,7 @@ def load_game_ids(path: str = "game_ids.txt") -> list[str]:
     return ids
 
 
-def sync_game(game_id: str) -> list[dict]:
+def sync_game(game_id: str) -> List[Dict]:
     """Fetch tất cả platforms cho 1 game. Trả về list records."""
     records = fetch_sdk_snapshot(game_id)
     # Nếu API không hỗ trợ all-platforms trong 1 call, fetch từng platform
@@ -52,8 +53,8 @@ def main():
 
     print(f"[sync] Bắt đầu sync {len(game_ids)} games × platforms: {PLATFORMS}")
 
-    all_records: list[dict] = []
-    errors: list[str] = []
+    all_records: List[Dict] = []
+    errors: List[str] = []
 
     for game_id in game_ids:
         try:

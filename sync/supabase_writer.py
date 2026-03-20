@@ -4,6 +4,7 @@ Dùng httpx trực tiếp, không cần supabase-py.
 """
 import os
 from datetime import datetime, timezone
+from typing import Dict, List
 
 import httpx
 
@@ -11,8 +12,16 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 TABLE = "sdk_version_snapshots"
 
+# Chỉ giữ các cột tồn tại trong bảng
+ALLOWED_COLUMNS = {
+    "game_id", "platform",
+    "latest_version", "latest_version_records", "latest_version_share_ratio",
+    "stable_version", "stable_version_share_ratio",
+    "latest_date", "updated_time", "synced_at",
+}
 
-def _headers() -> dict:
+
+def _headers() -> Dict:
     return {
         "apikey": SUPABASE_SERVICE_KEY,
         "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
@@ -22,7 +31,7 @@ def _headers() -> dict:
     }
 
 
-def upsert_batch(records: list[dict]) -> None:
+def upsert_batch(records: List[Dict]) -> None:
     """
     Upsert danh sách records vào sdk_version_snapshots.
     Mỗi record phải có game_id và platform.
@@ -30,11 +39,16 @@ def upsert_batch(records: list[dict]) -> None:
     if not records:
         return
 
-    # Thêm synced_at vào mỗi record
+    # Filter chỉ giữ cột hợp lệ + thêm synced_at
     now = datetime.now(timezone.utc).isoformat()
-    rows = [{**r, "synced_at": now} for r in records]
+    rows = [
+        {k: v for k, v in {**r, "synced_at": now}.items() if k in ALLOWED_COLUMNS}
+        for r in records
+    ]
 
-    url = f"{SUPABASE_URL}/rest/v1/{TABLE}"
+    url = f"{SUPABASE_URL}/rest/v1/{TABLE}?on_conflict=game_id,platform"
     with httpx.Client(timeout=30) as client:
         resp = client.post(url, headers=_headers(), json=rows)
+        if not resp.is_success:
+            print(f"[supabase] {resp.status_code} — {resp.text}", flush=True)
         resp.raise_for_status()

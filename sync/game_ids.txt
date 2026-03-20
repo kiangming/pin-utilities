@@ -1,4 +1,6 @@
 # Danh sách game IDs cần sync từ MCP
 # Mỗi dòng 1 game_id
 # Dòng bắt đầu bằng # là comment — bỏ qua
+cfmvn
+jusvn
 

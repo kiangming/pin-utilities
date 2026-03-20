@@ -1,0 +1,20 @@
+# Environment files — chứa secrets, KHÔNG commit
+.env
+.env.local
+.env.*.local
+sync/.env
+backend/sessions/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+
+# Google OAuth client secret
+client_secret_*.json
+
+# Logs
+*.log
+.server.pid
+.server.log

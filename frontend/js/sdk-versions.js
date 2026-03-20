@@ -85,7 +85,7 @@ const SdkVersionPanel = (() => {
   function _renderSummary() {
     const el = document.getElementById('sdkv-summary-content');
     if (!el) return;
-    if (!_summaryData || !_summaryData.kpi || !_summaryData.kpi.total_records) {
+    if (!_summaryData || !_summaryData.kpi || !_summaryData.kpi.total_games) {
       el.innerHTML = _emptyState('Chưa có dữ liệu. Nhấn Refresh hoặc chạy sync script.');
       return;
     }
@@ -107,9 +107,9 @@ const SdkVersionPanel = (() => {
     return `
     <div class="sdkv-kpi-row">
       <div class="sdkv-kpi total">
-        <div class="sdkv-kpi-value">${kpi.total_records ?? 0}</div>
+        <div class="sdkv-kpi-value">${kpi.total_games ?? 0}</div>
         <div class="sdkv-kpi-label">Games Tracked</div>
-        <div class="sdkv-kpi-sub">Tổng records trong DB</div>
+        <div class="sdkv-kpi-sub">Số game đang theo dõi</div>
       </div>
       <div class="sdkv-kpi updated">
         <div class="sdkv-kpi-value">${kpi.fully_updated ?? 0}</div>

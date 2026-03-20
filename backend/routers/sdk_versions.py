@@ -8,11 +8,24 @@ Routes:
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
+from backend.config import settings
 from backend.middleware.auth_guard import require_session
 from backend.models.schemas import SessionData
 from backend.services import sdk_version_service
 
 router = APIRouter(prefix="/api/sdk-versions", tags=["sdk-versions"])
+
+
+@router.get("/debug")
+async def debug_config(_session: SessionData = Depends(require_session)):
+    """Kiểm tra config Supabase — XÓA endpoint này sau khi debug xong."""
+    url = settings.supabase_url
+    key = settings.supabase_service_key
+    return JSONResponse({
+        "supabase_url": url or "(empty)",
+        "supabase_key_set": bool(key),
+        "supabase_key_prefix": key[:20] + "..." if key else "(empty)",
+    })
 
 
 @router.get("/summary")

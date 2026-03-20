@@ -52,16 +52,20 @@ def build_summary(snapshots: list[dict]) -> dict:
     if not snapshots:
         return {"kpi": {}, "version_distribution": {}, "platform_usage": [], "mismatch_games": []}
 
-    total = len(snapshots)
-    fully_updated = sum(1 for s in snapshots if s.get("latest_version_share_ratio") == 100)
-    warn_count = sum(
-        1 for s in snapshots
-        if _status(s.get("latest_version_share_ratio")) == "warn"
-    )
-    critical_count = sum(
-        1 for s in snapshots
-        if _status(s.get("latest_version_share_ratio")) == "critical"
-    )
+    unique_games = set(s["game_id"] for s in snapshots if s.get("game_id"))
+    total = len(unique_games)
+    fully_updated = len(set(
+        s["game_id"] for s in snapshots
+        if s.get("game_id") and s.get("latest_version_share_ratio") == 100
+    ))
+    warn_count = len(set(
+        s["game_id"] for s in snapshots
+        if s.get("game_id") and _status(s.get("latest_version_share_ratio")) == "warn"
+    ))
+    critical_count = len(set(
+        s["game_id"] for s in snapshots
+        if s.get("game_id") and _status(s.get("latest_version_share_ratio")) == "critical"
+    ))
     last_synced = max((s.get("synced_at") or "" for s in snapshots), default=None)
 
     # Version distribution per platform
@@ -129,7 +133,7 @@ def build_summary(snapshots: list[dict]) -> dict:
 
     return {
         "kpi": {
-            "total_records": total,
+            "total_games": total,
             "fully_updated": fully_updated,
             "warn_count": warn_count,
             "critical_count": critical_count,
