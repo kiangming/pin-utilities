@@ -37,6 +37,14 @@ def fetch_all_snapshots() -> list[dict]:
         return resp.json()
 
 
+def _parse_version(v: str) -> tuple:
+    """Parse 'a.b.c' → tuple of ints để so sánh semver. Non-numeric → (0,)."""
+    try:
+        return tuple(int(p) for p in str(v).split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
 def _status(ratio: int | None) -> str:
     if ratio is None:
         return "unknown"
@@ -80,14 +88,17 @@ def build_summary(snapshots: list[dict]) -> dict:
     for platform, versions in version_dist.items():
         total_p = sum(versions.values())
         sorted_v = sorted(versions.items(), key=lambda x: -x[1])
-        # Tìm version xuất hiện nhiều nhất → is_latest_dominant
+        # Version phổ biến nhất (nhiều game dùng nhất)
         top_version = sorted_v[0][0] if sorted_v else None
+        # Version mới nhất theo semver (a.b.c so sánh từng phần số)
+        newest_version = max(versions.keys(), key=_parse_version) if versions else None
         distribution[platform] = [
             {
                 "version": v,
                 "game_count": cnt,
                 "pct": round(cnt / total_p * 100) if total_p else 0,
                 "is_latest_dominant": v == top_version,
+                "is_newest": v == newest_version,
             }
             for v, cnt in sorted_v
         ]
