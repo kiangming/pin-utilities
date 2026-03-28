@@ -224,9 +224,9 @@ const SdkVersionPanel = (() => {
       <div class="sdkv-legend-item">
         <div class="sdkv-legend-dot" style="background:${DONUT_COLORS[i % DONUT_COLORS.length]}"></div>
         <span class="sdkv-legend-ver">${_esc(v.version)}</span>
-        ${v.is_newest ? '<span class="sdkv-legend-badge sdkv-badge-latest">latest</span>' : ''}
+        ${v.is_newest ? '<span class="sdkv-legend-badge sdkv-badge-latest">Latest</span>' : ''}
         ${v.is_latest_dominant ? '<span class="sdkv-legend-badge sdkv-badge-popular">Most Popular</span>' : ''}
-        <span class="sdkv-legend-pct">${v.pct}% <span style="color:var(--text3);font-size:10px">(${v.game_count})</span></span>
+        <span class="sdkv-legend-pct">${v.pct}% <span style="color:var(--text3)">(${v.game_count})</span></span>
       </div>`).join('');
 
     body.innerHTML = `
