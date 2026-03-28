@@ -555,6 +555,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.3** | **Mar 2026** | **Tool 4: SDK Version Management — full implementation** |
 | **v4.4** | **Mar 2026** | **Detail view redesign: merged cells, dropdown filter, fix search focus, group hover** |
 | **v4.5** | **Mar 2026** | **Fix "latest" badge: semver comparison (`_parse_version`); rename popular version label → "Most Popular"** |
+| **v4.6** | **Mar 2026** | **Version Distribution redesign: bigger donut (180px), 2-column compact legend, bordered badges; cache-busting `?v=` query string** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -600,6 +601,17 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
   - `is_latest_dominant` giữ nguyên cơ chế (version phổ biến nhất theo số lượng game)
   - Badge CSS split: `.sdkv-badge-latest` (accent/purple) cho newest, `.sdkv-badge-popular` (green) cho most popular
   - Legend hiển thị cả 2 badge riêng biệt, 1 version có thể có cả 2 nếu vừa mới nhất vừa phổ biến nhất
+
+### v4.6 chi tiết
+- **Version Distribution card redesign:**
+  - Donut chart: 120px → **180px**, hole inset 22px → 32px, center % font 16px → 20px
+  - Legend: `flex column gap:7px` → **CSS Grid 2 columns**, row height compact (padding 3px), font 12px → 11px
+  - Legend dot: 10px → 8px; `sdkv-legend-pct` thêm `font-variant-numeric: tabular-nums; white-space: nowrap`
+  - `.sdkv-donut-wrap` đổi `align-items: center` → `flex-start` (legend align top với donut)
+- **Badge style update:** Thêm `border: 1px solid` vào cả `.sdkv-badge-latest` và `.sdkv-badge-popular`, giữ background fill
+  - "Latest" viết hoa chữ L (trước là lowercase "latest")
+- **Cache-busting:** Thêm `?v=X.X` query string vào tất cả `<script>` và `<link>` trong `index.html`
+  - Bump version khi deploy JS/CSS mới để force browser reload, tránh stale cache
 
 ---
 
@@ -653,8 +665,10 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ### 16.6 Summary tab UI
 - 4 KPI cards: Total Games (unique game_ids), Fully Updated, Warning, Critical
-- Version Distribution: donut chart + legend per platform (Android/iOS/Windows), platform tabs
-  - Legend badges: `.sdkv-badge-latest` (purple) = semver newest; `.sdkv-badge-popular` (green) = most popular by game count
+- Version Distribution: donut chart (180px) + 2-column compact legend per platform (Android/iOS/Windows), platform tabs
+  - Donut center: hiển thị % và version của top version
+  - Legend layout: CSS Grid 2 columns, font 11px, row padding compact
+  - Legend badges: `.sdkv-badge-latest` (purple, bordered) = semver newest "Latest"; `.sdkv-badge-popular` (green, bordered) = most popular "Most Popular"
   - 1 version có thể có cả 2 badges nếu vừa newest vừa most popular
 - Platform Usage: horizontal bar chart theo total login records
 - Latest ≠ Stable: bảng game có version mismatch
@@ -701,9 +715,9 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 | `.sdkv-row-hover` | Hover state cho toàn bộ rows của 1 game |
 | `.sdkv-th-sort` | Sortable header — cursor pointer |
 | `.sdkv-sort-icon` | Sort indicator, `.active` = accent color |
-| `.sdkv-legend-badge` | Base badge style cho version legend (9px, bold) |
-| `.sdkv-badge-latest` | Badge "latest" — purple/accent (semver newest version) |
-| `.sdkv-badge-popular` | Badge "Most Popular" — green (highest game count version) |
+| `.sdkv-legend-badge` | Base badge style cho version legend (9px, bold, transparent bg) |
+| `.sdkv-badge-latest` | Badge "Latest" — purple/accent fill + border (semver newest version) |
+| `.sdkv-badge-popular` | Badge "Most Popular" — green fill + border (highest game count version) |
 
 ### 16.9 Security rules
 - `MCP_BEARER_TOKEN` chỉ trong `sync/.env` — KHÔNG commit, KHÔNG lên Railway
@@ -727,10 +741,10 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ## 17. Hướng phát triển tiếp theo (Backlog)
 
-- **v4.6:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
-- **v4.6:** Export filtered data to Excel/CSV (Pipeline + SDK Versions)
-- **v4.6:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
-- **v4.6:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
+- **v4.7:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
+- **v4.7:** Export filtered data to Excel/CSV (Pipeline + SDK Versions)
+- **v4.7:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
+- **v4.7:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
 - **Future:** Date filter cho tab Pipeline "Closed"
 - **Future:** Lưu date range preference vào localStorage
 - **Future:** Sorting/grouping trong Stats timeline theo owner hoặc market
