@@ -94,6 +94,51 @@ const SdkVersionPanel = (() => {
     _applyAndRenderTable();
   }
 
+  function exportExcel() {
+    if (!_detailData) return;
+    const filtered = _applyFilters(_detailData.items || []);
+    const groups   = _sortGroups(_groupByGame(filtered));
+
+    const rows = [];
+    for (const group of groups) {
+      const sortedRows = [...group.rows].sort((a, b) =>
+        (b.latest_version_share_ratio ?? -1) - (a.latest_version_share_ratio ?? -1)
+      );
+      for (const row of sortedRows) {
+        rows.push({
+          'Game ID':       group.game_id,
+          'Product Name':  group.product_name || group.game_id,
+          'Platform':      row.platform,
+          'Latest Version': row.latest_version || '',
+          'Adoption (%)':  row.latest_version_share_ratio ?? '',
+          'Stable Version': row.stable_version || '',
+          'Stable Adoption (%)': row.stable_version_share_ratio ?? '',
+          'Status':        row.status || '',
+          'Mismatch':      row.version_mismatch ? 'Yes' : 'No',
+          'Snapshot Date': row.latest_date || '',
+        });
+      }
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    // Column widths
+    ws['!cols'] = [
+      { wch: 16 }, { wch: 28 }, { wch: 10 }, { wch: 16 },
+      { wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 10 },
+      { wch: 10 }, { wch: 14 },
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SDK Versions');
+
+    const hasFilter = _filter.search || _filter.platform || _filter.status ||
+                      _filter.latestVersions.size || _filter.stableVersions.size;
+    const today = new Date().toISOString().slice(0, 10);
+    const filename = `sdk-versions${hasFilter ? '-filtered' : ''}-${today}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  }
+
   function toggleDropdown(type) {
     const panel = document.getElementById(`sdkv-vf-${type}-panel`);
     if (!panel) return;
@@ -367,6 +412,9 @@ const SdkVersionPanel = (() => {
             <div class="sdkv-vf-grid" id="sdkv-vf-stable-grid"></div>
           </div>
         </div>
+        <button class="sdkv-export-btn" onclick="SdkVersionPanel.exportExcel()" title="Export to Excel">
+          ⬇ Export Excel
+        </button>
       </div>
       <div class="sdkv-detail-table-wrap">
         <table class="sdkv-detail-table">
@@ -637,7 +685,7 @@ const SdkVersionPanel = (() => {
     boot, fetchData, switchView,
     applySearch, applyFilter,
     setSortField, toggleVersionFilter, toggleVersionAll,
-    toggleDropdown,
+    toggleDropdown, exportExcel,
     _switchDistTab,
   };
 })();

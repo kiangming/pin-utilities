@@ -236,6 +236,16 @@
 }
 .sdkv-select:focus { border-color: var(--accent); }
 
+/* ── Export button ────────────────────────────────────────────────────────── */
+.sdkv-export-btn {
+  margin-left: auto; padding: 6px 14px; border-radius: 6px;
+  border: 1px solid var(--border2); background: var(--surface2);
+  color: var(--text2); font-size: 12px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.sdkv-export-btn:hover { background: #22c55e20; color: #22c55e; border-color: #22c55e; }
+
 /* ── Detail table ─────────────────────────────────────────────────────────── */
 .sdkv-detail-table-wrap { overflow-x: auto; }
 .sdkv-detail-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
