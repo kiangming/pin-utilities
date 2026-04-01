@@ -144,3 +144,15 @@ def fetch_sdk_snapshot(game_id: str, platform: Optional[str] = None) -> List[Dic
         "arguments": arguments,
     })
     return _extract_records(response)
+
+
+def fetch_sdk_snapshot_all() -> List[Dict]:
+    """
+    Gọi MCP sdk_version_snapshot không có game_id → trả về toàn bộ snapshot data.
+    Trả về list records (mỗi record = 1 game × 1 platform).
+    """
+    response = _call_jsonrpc("tools/call", {
+        "name": "sdk_version_snapshot",
+        "arguments": {},
+    })
+    return _extract_records(response)
