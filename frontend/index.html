@@ -398,6 +398,7 @@
   <!-- Pipeline feature CSS -->
   <link rel="stylesheet" href="css/pipeline.css?v=4.5">
   <link rel="stylesheet" href="css/sdk-versions.css?v=4.7">
+  <link rel="stylesheet" href="css/ticket-reminder.css?v=1.0">
 </head>
 <body>
 <div class="app-shell">
@@ -451,6 +452,16 @@
   <a class="nav-item" onclick="selectTool('sdk-versions', this)" href="#">
     <span class="nav-item-icon">📦</span>
     SDK Versions
+  </a>
+  <hr class="nav-section-divider">
+  <div class="left-nav-header">Ticket Tools</div>
+  <a class="nav-item" onclick="selectTool('ticket-fetch', this)" href="#">
+    <span class="nav-item-icon">🎫</span>
+    Ticket Fetch
+  </a>
+  <a class="nav-item" onclick="selectTool('remind-config', this)" href="#">
+    <span class="nav-item-icon">🔔</span>
+    Remind Config
   </a>
   <hr class="nav-section-divider">
 </nav>
@@ -815,6 +826,9 @@
 
   </div>
 </div><!-- /tool-sdk-versions -->
+
+<div id="tool-ticket-fetch"  class="tool-panel" style="display:none;"></div>
+<div id="tool-remind-config" class="tool-panel" style="display:none;"></div>
 
 </div><!-- /app-content -->
 </div><!-- /app-body -->
@@ -1753,6 +1767,7 @@ function exportCSV() {
 <script src="js/pipeline/pipeline.js?v=4.5"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="js/sdk-versions.js?v=4.7"></script>
+<script src="js/ticket-reminder.js?v=1.0"></script>
 <script>
 // Load user info vào header
 ApiClient.me().then(user => {
@@ -1779,6 +1794,12 @@ ApiClient.me().then(user => {
     if (tool === 'sdk-versions' && !_sdkvBooted) {
       _sdkvBooted = true;
       SdkVersionPanel.boot();
+    }
+    if (tool === 'ticket-fetch') {
+      TicketReminderPanel.boot();
+    }
+    if (tool === 'remind-config') {
+      TicketReminderPanel.bootConfig();
     }
   };
 })();

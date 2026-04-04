@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.routers import auth, bootstrap, sheets, sdk_versions
+from backend.routers import auth, bootstrap, sheets, sdk_versions, remind
 from backend.services import session_store
 
 FRONTEND_DIR = Path(__file__).parent.parent / settings.frontend_dir
@@ -43,6 +43,7 @@ app.include_router(auth.router)
 app.include_router(bootstrap.router)
 app.include_router(sheets.router)
 app.include_router(sdk_versions.router)
+app.include_router(remind.router)
 
 
 # ── Frontend routes ────────────────────────────────────────────────────────────

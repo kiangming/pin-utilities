@@ -43,6 +43,21 @@ const ApiClient = (() => {
     return _request('POST', path, body);
   }
 
+  async function put(path, body) {
+    return _request('PUT', path, body);
+  }
+
+  async function del(path) {
+    const opts = { method: 'DELETE', credentials: 'include', headers: {} };
+    const resp = await fetch(BASE + path, opts);
+    if (resp.status === 401) { window.location.href = '/login'; return null; }
+    if (!resp.ok && resp.status !== 204) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      throw new ApiError(resp.status, err.detail || resp.statusText);
+    }
+    return null;
+  }
+
   /** Lấy thông tin user đang login. Trả về { email, name, picture } */
   async function me() {
     return get('/auth/me');
@@ -54,7 +69,7 @@ const ApiClient = (() => {
     window.location.href = '/login';
   }
 
-  return { get, post, me, logout };
+  return { get, post, put, delete: del, me, logout };
 })();
 
 

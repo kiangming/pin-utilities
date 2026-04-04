@@ -1,4 +1,4 @@
-# CLAUDE.md — PIN Utilities (SDK Config Analyzer + Game Launching Pipeline)
+# CLAUDE.md — PIN Utilities (SDK Config Analyzer + Game Launching Pipeline + Ticket Reminder)
 
 > Tài liệu này mô tả toàn bộ codebase, kiến trúc, tính năng, và quy tắc bất biến
 > để Claude có thể tiếp tục phát triển chính xác trong các session tiếp theo.
@@ -33,13 +33,20 @@ PIN/
 │   ├── routers/
 │   │   ├── auth.py              ← GET /auth/login, GET /auth/callback, POST /auth/logout, GET /auth/me
 │   │   ├── bootstrap.py         ← GET /api/config, POST /api/batch, GET /api/batch/status
-│   │   └── sheets.py            ← GET /api/sheets/{tab}, GET /api/sheets/all, POST /api/sheets/refresh
+│   │   ├── sheets.py            ← GET /api/sheets/{tab}, GET /api/sheets/all, POST /api/sheets/refresh
+│   │   └── remind.py            ← /api/remind/* (20 endpoints) — Ticket Reminder
 │   └── services/
 │       ├── session_store.py     ← create/get/update/delete/purge_expired sessions
 │       ├── oauth_service.py     ← build_auth_url, exchange_code, refresh_access_token, fetch_userinfo
 │       ├── sheets_service.py    ← TTLCache fetch_tab/fetch_all/invalidate, parse_release/parse_close
 │       ├── bootstrap_service.py ← fetch_config (curl subprocess), start_batch (background thread), get_job
-│       └── sdk_version_service.py ← fetch_all_snapshots, build_summary, build_detail
+│       ├── sdk_version_service.py ← fetch_all_snapshots, build_summary, build_detail
+│       ├── ticket_service.py    ← External Nexus API + HMAC signature auth
+│       ├── filter_service.py    ← needRemind logic, calc_diff_days (pure functions)
+│       ├── template_service.py  ← render {placeholder} templates
+│       ├── teams_service.py     ← Teams Incoming Webhook send/test
+│       ├── remind_db.py         ← Supabase CRUD: webhooks, templates, handlers, logs, products, services
+│       └── fetch_job_service.py ← Background job: fetch tickets + comments, progress polling
 ├── sync/                        ← Chạy thủ công / cron, KHÔNG deploy lên Railway
 │   ├── run_sync.py              ← Entry point: 2 MCP calls → map/filter → Supabase
 │   ├── mcp_client.py            ← JSON-RPC 2.0 over HTTP, fetch_game_list, fetch_sdk_snapshot, fetch_sdk_snapshot_all
@@ -561,6 +568,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.5** | **Mar 2026** | **Fix "latest" badge: semver comparison (`_parse_version`); rename popular version label → "Most Popular"** |
 | **v4.6** | **Mar 2026** | **Version Distribution redesign: bigger donut (180px), 2-column compact legend, bordered badges; cache-busting `?v=` query string** |
 | **v4.7** | **Apr 2026** | **Export Excel (Detail tab, theo filter); Sync script refactor: 2 MCP calls + intermediate data files** |
+| **v4.8** | **Apr 2026** | **Tool 5: Ticket Reminder — fetch Nexus tickets, phân tích needRemind, gửi Teams webhook** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -617,6 +625,25 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
   - "Latest" viết hoa chữ L (trước là lowercase "latest")
 - **Cache-busting:** Thêm `?v=X.X` query string vào tất cả `<script>` và `<link>` trong `index.html`
   - Bump version khi deploy JS/CSS mới để force browser reload, tránh stale cache
+
+### v4.8 chi tiết
+- **Tool 5: Ticket Reminder** — tính năng mới hoàn chỉnh
+- **Backend** (7 files mới):
+  - `remind.py` router: 20 endpoints `/api/remind/*`, `require_session()` trên tất cả
+  - `ticket_service.py`: HMAC SHA1 auth port từ PHP/JS, `fetch_all_tickets` (pagination + `on_page` callback), `fetch_ticket_comments`, `fetch_ticket_detail`, `fetch_products`, `fetch_services`
+  - `filter_service.py`: pure functions `calc_diff_days`, `is_need_remind`, `build_time_label`, `build_remind_item`
+  - `template_service.py`: `render(content, data)` — `{placeholder}` substitution; `preview(content)` với SAMPLE_DATA
+  - `teams_service.py`: `send_message(webhook_url, message)`, `send_test(webhook_url)` — timeout 10s, trả tuple
+  - `remind_db.py`: Supabase httpx CRUD cho 6 tables; `find_webhook_for_product` — case-insensitive match + `is_default` fallback; `_check_sb()` graceful khi Supabase chưa cấu hình
+  - `fetch_job_service.py`: background thread job store, `start_fetch_job` → `job_id`, `_run_fetch` với phase 1 (tickets, `on_page` callback) + phase 2 (comments, 100ms delay)
+- **Frontend** (2 files mới):
+  - `ticket-reminder.css`: tất cả `tkr-*` classes, dùng CSS variables only
+  - `ticket-reminder.js`: `TicketReminderPanel` IIFE — `boot()` (Ticket Fetch panel) + `bootConfig()` (Remind Config panel); 2 send modes (Remind All / Select); `_sentTicketIds` Set cho session-scoped dedup
+- **Database:** `docs/ticket-reminder/migration.sql` — 6 tables (remind_templates, webhook_configs, handler_usernames, remind_logs, products, services) + 2 seed templates
+- **onclick encoding:** JSON data trong onclick dùng `onclick="...${JSON.stringify(x).replace(/"/g, '&quot;')}..."` — tuân thủ CLAUDE.md section 8.3
+- **service_ids:** Server expect string IDs (`"53"` không phải `53`) — `[str(s) for s in req.service_ids]` là intentional
+- **config.py:** Thêm `ticket_api_base_url`, `ticket_api_client_id`, `ticket_api_client_secret`
+- **api-client.js:** Thêm `put()` và `delete()` methods, export trong return object
 
 ### v4.7 chi tiết
 - **Export Excel — Detail tab (`sdk-versions.js`):**
@@ -773,18 +800,223 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 | **AX-20** | game_id trong sync: dùng `product_code` làm fallback khi `game_id: null` từ MCP |
 | **AX-21** | Sync script dùng 2 MCP calls — KHÔNG loop `fetch_sdk_snapshot(game_id)` per game |
 | **AX-22** | `sync/data/` gitignored — KHÔNG commit file game_list.json hoặc snapshot_data.json |
+| **AX-23** | Ticket Reminder onclick dùng `&quot;` encoding — KHÔNG dùng single-quote wrapper với JSON data |
+| **AX-24** | `service_ids` luôn là string list (`[str(s) for s in ...]`) — server expect string IDs |
 
 ---
 
 ## 17. Hướng phát triển tiếp theo (Backlog)
 
-- **v4.8:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
-- **v4.8:** Export Excel cho Pipeline Detail
-- **v4.8:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
-- **v4.8:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
+- **v4.9:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
+- **v4.9:** Export Excel cho Pipeline Detail
+- **v4.9:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
+- **v4.9:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
+- **Ticket Reminder v5.1:** BUG-004 — Webhook table hiện tên template thay UUID
+- **Ticket Reminder v5.1:** SEC-001 — Validate `ticket_url` chỉ chấp nhận `https://` prefix
 - **Future:** Date filter cho tab Pipeline "Closed"
 - **Future:** Lưu date range preference vào localStorage
 - **Future:** Sorting/grouping trong Stats timeline theo owner hoặc market
 - **Future:** Multi-user session management / role-based access
 - **Future:** SDK Version — lịch sử adoption rate (lưu nhiều snapshot theo ngày)
 - **Future:** SDK Version — alert khi adoption rate giảm đột ngột
+
+---
+
+## 18. Tool 5: Ticket Reminder — v4.8
+
+> Status: **Implemented & Deployed**
+
+### 18.1 Tổng quan nghiệp vụ
+
+Fetch ticket từ Nexus Ticket API, xác định ticket nào cần nhắc (due date sắp tới + comment cuối là handler), gửi Teams webhook message theo từng sản phẩm.
+
+**needRemind logic:**
+- Ticket không có `due_date` → bỏ qua (false)
+- `diffDays > threshold` (còn nhiều ngày) → false (optimization, không fetch comment)
+- Không có comment → true (handler chưa phản hồi lần nào)
+- Comment cuối cùng từ `handler_usernames` → true (last reply là handler, chưa có phản hồi mới)
+- Comment cuối từ requester → false (requester đã comment lại, không cần nhắc)
+
+**time_label:**
+- `diffDays >= 0`: `"will expire on DD/MM/YYYY"`
+- `diffDays < 0`: `"expired on DD/MM/YYYY"`
+
+### 18.2 Kiến trúc
+
+```
+backend/
+  routers/remind.py                ← 20 endpoints /api/remind/*
+  services/
+    ticket_service.py              ← HMAC auth, fetch tickets/comments/detail/products/services
+    filter_service.py              ← calc_diff_days, is_need_remind, build_remind_item
+    template_service.py            ← render(content, data), preview(content)
+    teams_service.py               ← send_message, send_test
+    remind_db.py                   ← Supabase httpx CRUD (6 tables)
+    fetch_job_service.py           ← Background job: fetch + analyze tickets
+
+frontend/
+  css/ticket-reminder.css          ← prefix: tkr-
+  js/ticket-reminder.js            ← TicketReminderPanel IIFE
+
+docs/ticket-reminder/
+  migration.sql                    ← 6 Supabase tables + 2 seed templates
+  FEATURE.md                       ← Nghiệp vụ, luồng xử lý
+  ARCHITECTURE.md                  ← Tech stack, DB schema, API routes
+  UI_SPEC.md                       ← Giao diện, HTML, CSS
+  MANAGEMENT_SPEC.md               ← Webhook, template, handler config
+```
+
+### 18.3 Supabase tables (migration.sql)
+
+| Table | Mô tả |
+|---|---|
+| `remind_templates` | Message templates với `{ticket_id}`, `{time_label}`, ... placeholders |
+| `webhook_configs` | Teams webhook URLs, match theo `product_name` (case-insensitive) + `is_default` fallback |
+| `handler_usernames` | Username danh sách handler (so với comment author) |
+| `remind_logs` | Log mỗi lần gửi: ticket_id, status (sent/failed/skipped), timestamp |
+| `products` | Cache sản phẩm từ Nexus API |
+| `services` | Cache dịch vụ từ Nexus API |
+
+### 18.4 API Endpoints (20 total, tất cả `require_session()`)
+
+| Method | Path | Mô tả |
+|---|---|---|
+| POST | `/api/remind/tickets/fetch` | Start background fetch job → `{job_id}` |
+| GET | `/api/remind/tickets/fetch/status` | Poll job progress → phase, progress, result |
+| POST | `/api/remind/send` | Gửi remind cho list ticket_ids đã chọn |
+| GET | `/api/remind/templates` | List templates |
+| POST | `/api/remind/templates` | Create template |
+| GET | `/api/remind/templates/{id}` | Get template |
+| PUT | `/api/remind/templates/{id}` | Update template |
+| DELETE | `/api/remind/templates/{id}` | Delete template |
+| POST | `/api/remind/templates/preview` | Preview rendered template |
+| GET | `/api/remind/webhooks` | List webhooks |
+| POST | `/api/remind/webhooks` | Create webhook |
+| GET | `/api/remind/webhooks/{id}` | Get webhook |
+| PUT | `/api/remind/webhooks/{id}` | Update webhook |
+| DELETE | `/api/remind/webhooks/{id}` | Delete webhook |
+| POST | `/api/remind/webhooks/{id}/test` | Send test message |
+| GET | `/api/remind/handlers` | List handler usernames |
+| POST | `/api/remind/handlers` | Add handler username |
+| DELETE | `/api/remind/handlers/{id}` | Remove handler username |
+| GET | `/api/remind/logs` | List remind logs (recent 100) |
+| GET | `/api/remind/products` | Fetch products từ Nexus API |
+
+### 18.5 Background Job Flow
+
+```
+POST /api/remind/tickets/fetch
+  → start_fetch_job() → job_id (returned immediately)
+  → Thread: _run_fetch()
+      Phase 1 "tickets": fetch_all_tickets() với on_page callback
+        → job["tickets_page"] / ["tickets_total_pages"] update real-time
+      Phase 2 "comments": loop qua tickets
+        → skip nếu no due_date
+        → skip comment fetch nếu diffDays > threshold (optimization)
+        → fetch_ticket_comments() (100ms delay)
+        → build_remind_item()
+        → fetch_ticket_detail() CHỈ KHI need_remind=True (optimization)
+      Phase "done": job["result"] = { total, remind_count, tickets }
+
+GET /api/remind/tickets/fetch/status?job_id=
+  → trả job dict: phase, tickets_page, tickets_total_pages,
+                  comments_done, comments_total, status, result, error
+```
+
+### 18.6 Frontend — TicketReminderPanel
+
+**2 panels:**
+- `boot()` → Ticket Fetch panel (`#tool-ticket-fetch`) — lazy init 1 lần
+- `bootConfig()` → Remind Config panel (`#tool-remind-config`) — lazy init 1 lần
+
+**Ticket Fetch flow:**
+1. User chọn filters (service, status, assignee, date range, threshold)
+2. Click Fetch → `POST /api/remind/tickets/fetch` → `job_id`
+3. Poll `/status` mỗi 1.5s → update progress bar và status text
+4. Khi done → render ticket table (cột: ticket, product, due date, time label, status)
+5. Send modes:
+   - **Mode A** (Remind All): gửi tất cả `need_remind=true` tickets
+   - **Mode B** (Select): user check checkbox → chỉ gửi các ticket đã chọn
+6. `_sentTicketIds` Set — reset khi fetch mới, prevent double-send trong session
+
+**Config tabs:**
+- Templates — CRUD + preview
+- Webhooks — CRUD + test
+- Handlers — add/remove usernames
+- Logs — view recent 100 logs
+
+### 18.7 HMAC Signature Auth
+
+Port từ PHP `buildSignature()`:
+```python
+def _build_signature(client_secret, params):
+    sorted_params = dict(sorted(params.items()))
+    hash_string = sha1(client_secret).hexdigest()
+    for value in sorted_params.values():
+        if isinstance(value, list):
+            filtered = [v for v in value if v]
+            value = json.dumps(filtered, separators=(",", ":"))
+        str_val = str(value) if value is not None else ""
+        str_val = html_entity_decode(str_val)   # &amp; → &, etc.
+        if str_val:
+            hash_string += "|" + str_val
+    return sha1(hash_string).hexdigest()
+```
+
+Array params trong URL: PHP-style `key[]=val1&key[]=val2` (không phải `key=val1&key=val2`).
+
+### 18.8 Config (env vars)
+
+```
+TICKET_API_BASE_URL=https://ticket.vnggames.net/integration/v1
+TICKET_API_CLIENT_ID=...
+TICKET_API_CLIENT_SECRET=...
+SUPABASE_URL=...          (tái dụng từ sdk-versions)
+SUPABASE_SERVICE_KEY=...  (tái dụng từ sdk-versions)
+```
+
+### 18.9 Anti-regression rules (Ticket Reminder)
+
+| Rule | Mô tả |
+|---|---|
+| **AX-23** | onclick với JSON data dùng `&quot;` encoding — KHÔNG single-quote wrapper (CLAUDE.md 8.3) |
+| **AX-24** | `service_ids` luôn là string list — server expect `"53"` không phải `53` |
+| **AX-25** | `boot()` / `bootConfig()` chỉ init 1 lần (`_booted` / `_configBooted` flags) |
+| **AX-26** | KHÔNG gửi remind tự động — user phải bấm nút Send |
+| **AX-27** | `_sentTicketIds` reset khi fetch mới — chỉ prevent double-send trong cùng session |
+| **AX-28** | `fetch_ticket_detail()` chỉ gọi khi `need_remind=True` — không fetch thừa |
+| **AX-29** | CSS prefix `tkr-` giữ nguyên, không conflict với `pl-`, `pls-`, `sdkv-` |
+
+---
+
+## Multi-Agent Workflow — Ticket Reminder
+
+Tính năng này được phát triển theo quy trình **Sequential Handoff** với 6 roles.
+
+### Cách khởi động
+
+```bash
+claude "Đọc agents/WORKFLOW.md và bắt đầu"
+```
+
+### Thứ tự roles
+
+| # | Role | File | Output |
+|---|---|---|---|
+| 1 | PM | `agents/roles/pm.md` | `agents/outputs/01-prd.md` |
+| 2 | BA | `agents/roles/ba.md` | `agents/outputs/02-spec.md` |
+| 3 | Design | `agents/roles/design.md` | `agents/outputs/03-design-spec.md` |
+| 4 | Tech Lead | `agents/roles/tech-lead.md` | `agents/outputs/04-tech-plan.md` |
+| 5 | Dev | `agents/roles/dev.md` | `agents/outputs/05-dev-log.md` |
+| 6 | QC | `agents/roles/qc.md` | `agents/outputs/06-qc-report.md` |
+
+### Nguyên tắc confirm
+
+- Gõ `ok` / `next` → chuyển role tiếp theo
+- Gõ feedback cụ thể → role hiện tại xử lý, không chuyển tiếp
+- Gõ `back` → quay lại role trước để sửa
+- Xem `agents/workflows/handoff-protocol.md` để biết thêm
+
+### Skills location
+
+Tất cả skill files nằm tại: `~/.claude/skills/`

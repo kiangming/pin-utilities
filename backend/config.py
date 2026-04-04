@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     adoption_warn_threshold: int = 80
     adoption_critical_threshold: int = 50
 
+    # Ticket Reminder — External API
+    ticket_api_base_url: str = "https://ticket.vnggames.net/integration/v1"
+    ticket_api_client_id: str = ""
+    ticket_api_client_secret: str = ""
+
     # Server — Railway inject PORT tự động
     host: str = "0.0.0.0"
     port: int = 8080          # bị override bởi env var PORT trên Railway
