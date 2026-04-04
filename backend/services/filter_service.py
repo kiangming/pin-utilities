@@ -91,7 +91,7 @@ def _extract_last_comment(comments: list) -> dict | None:
         return None
     last = comments[-1]
     return {
-        "name":       last.get("name", ""),
+        "name":       (last.get("user") or {}).get("name", ""),
         "notes":      last.get("notes", ""),
         "created_on": last.get("created_on", ""),
     }

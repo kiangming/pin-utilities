@@ -715,7 +715,7 @@ const TicketReminderPanel = (() => {
     const lastCommentHtml = lc && (lc.name || lc.notes)
       ? `<div class="tkr-last-comment">
            <div class="tkr-lc-name">${_esc(lc.name)}</div>
-           <div class="tkr-lc-notes">${_esc(lc.notes)}</div>
+           <div class="tkr-lc-notes">${_esc(_stripHtml(lc.notes))}</div>
            <div class="tkr-lc-date">${_esc(lc.created_on)}</div>
          </div>`
       : '<span style="color:var(--text3);font-size:11px;">—</span>';
@@ -734,6 +734,12 @@ const TicketReminderPanel = (() => {
         <td>${lastCommentHtml}</td>
       </tr>
     `;
+  }
+
+  function _stripHtml(html) {
+    const el = document.createElement('div');
+    el.innerHTML = html || '';
+    return el.textContent || el.innerText || '';
   }
 
   function _fmtDate(iso) {
