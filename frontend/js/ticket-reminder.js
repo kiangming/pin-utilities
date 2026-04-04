@@ -18,6 +18,7 @@ const TicketReminderPanel = (() => {
   let _statusPickerOpen = false;
   let _configTabsLoaded = {};       // { webhooks: true, ... }
   let _debugMode = localStorage.getItem('tkrDebugMode') === 'true';
+  let _productsPage = 0;
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -229,11 +230,20 @@ const TicketReminderPanel = (() => {
     ApiClient.post('/api/remind/products/sync', {}).then(res => {
       _showToast(`Đã sync ${res.synced} products`, 'info');
       if (_debugMode && res.debug_requests) _showDebugDialog(res.debug_requests);
+      _productsPage = 0;
+      _configTabsLoaded['products'] = false;
+      _loadConfigTab('products');
     }).catch(err => {
       _showToast('Lỗi sync products: ' + (err.message || err), 'err');
     }).finally(() => {
       if (btn) btn.disabled = false;
     });
+  }
+
+  function goProductsPage(page) {
+    _productsPage = page;
+    _configTabsLoaded['products'] = false;
+    _loadConfigTab('products');
   }
 
   function syncStatuses() {
@@ -755,6 +765,7 @@ const TicketReminderPanel = (() => {
           <button class="tkr-config-tab-btn" data-tab="templates" onclick="TicketReminderPanel.switchConfigTab('templates')">Templates</button>
           <button class="tkr-config-tab-btn" data-tab="handlers" onclick="TicketReminderPanel.switchConfigTab('handlers')">Handlers</button>
           <button class="tkr-config-tab-btn" data-tab="services" onclick="TicketReminderPanel.switchConfigTab('services')">Services</button>
+          <button class="tkr-config-tab-btn" data-tab="products" onclick="TicketReminderPanel.switchConfigTab('products')">Products</button>
           <button class="tkr-config-tab-btn" data-tab="statuses" onclick="TicketReminderPanel.switchConfigTab('statuses')">Statuses</button>
           <button class="tkr-config-tab-btn" data-tab="logs" onclick="TicketReminderPanel.switchConfigTab('logs')">Logs</button>
         </div>
@@ -762,6 +773,7 @@ const TicketReminderPanel = (() => {
         <div id="tkr-tab-templates" class="tkr-tab-content" data-tab="templates" style="display:none;"></div>
         <div id="tkr-tab-handlers"  class="tkr-tab-content" data-tab="handlers"  style="display:none;"></div>
         <div id="tkr-tab-services"  class="tkr-tab-content" data-tab="services"  style="display:none;"></div>
+        <div id="tkr-tab-products"  class="tkr-tab-content" data-tab="products"  style="display:none;"></div>
         <div id="tkr-tab-statuses"  class="tkr-tab-content" data-tab="statuses"  style="display:none;"></div>
         <div id="tkr-tab-logs"      class="tkr-tab-content" data-tab="logs"      style="display:none;"></div>
       </div>
@@ -797,6 +809,13 @@ const TicketReminderPanel = (() => {
     } else if (tab === 'services') {
       ApiClient.get('/api/remind/services').then(rows => {
         container.innerHTML = _buildServicesTab(rows);
+      }).catch(err => {
+        container.innerHTML = `<div class="tkr-error-card">${_esc(String(err))}</div>`;
+      });
+    } else if (tab === 'products') {
+      const offset = _productsPage * 100;
+      ApiClient.get(`/api/remind/products?offset=${offset}&limit=100`).then(res => {
+        container.innerHTML = _buildProductsTab(res.items, _productsPage, res.total);
       }).catch(err => {
         container.innerHTML = `<div class="tkr-error-card">${_esc(String(err))}</div>`;
       });
@@ -840,9 +859,8 @@ const TicketReminderPanel = (() => {
           `).join('')}
         </tbody>
       </table>
-      <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+      <div style="margin-top:12px;">
         <button class="tkr-btn-primary" onclick="TicketReminderPanel.showWebhookForm(null)">+ Thêm Webhook</button>
-        <button class="tkr-btn" id="tkr-sync-products-btn" onclick="TicketReminderPanel.syncProducts()">⟳ Sync Products</button>
       </div>
       <div class="tkr-inline-form" id="tkr-webhook-form">
         <div class="tkr-form-grid">
@@ -966,6 +984,39 @@ const TicketReminderPanel = (() => {
           `).join('')}
         </tbody>
       </table>
+    `;
+  }
+
+  function _buildProductsTab(rows, page, totalCount) {
+    const totalPages = Math.max(1, Math.ceil(totalCount / 100));
+    const hasPrev = page > 0;
+    const hasNext = (page + 1) * 100 < totalCount;
+    const pagination = totalCount > 100 ? `
+      <div style="display:flex;align-items:center;gap:10px;margin-top:12px;">
+        <button class="tkr-btn" ${hasPrev ? '' : 'disabled'} onclick="TicketReminderPanel.goProductsPage(${page - 1})">← Trang trước</button>
+        <span style="font-size:12px;color:var(--text2);">Trang ${page + 1} / ${totalPages}</span>
+        <button class="tkr-btn" ${hasNext ? '' : 'disabled'} onclick="TicketReminderPanel.goProductsPage(${page + 1})">Trang sau →</button>
+      </div>` : '';
+    return `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <button class="tkr-btn-primary" id="tkr-sync-products-btn" onclick="TicketReminderPanel.syncProducts()">⟳ Sync Products</button>
+        <span class="tkr-sync-info">${totalCount} products trong DB</span>
+      </div>
+      <table class="tkr-config-table">
+        <thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Alias</th></tr></thead>
+        <tbody>
+          ${rows.length === 0 ? `<tr><td colspan="4"><div class="tkr-empty"><div class="tkr-empty-icon">📦</div><div class="tkr-empty-text">Chưa sync. Nhấn Sync Products.</div></div></td></tr>` : ''}
+          ${rows.map(p => `
+            <tr>
+              <td style="font-family:monospace;color:var(--text3);">${p.id}</td>
+              <td>${_esc(p.name)}</td>
+              <td style="color:var(--text3);">${_esc(p.code || '')}</td>
+              <td style="color:var(--text3);">${_esc(p.alias || '')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      ${pagination}
     `;
   }
 
@@ -1305,5 +1356,6 @@ const TicketReminderPanel = (() => {
     filterLogs,
     toggleDebugMode,
     closeDebugDialog,
+    goProductsPage,
   };
 })();

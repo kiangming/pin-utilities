@@ -268,17 +268,30 @@ def upsert_products(products: list[dict]) -> int:
     return len(rows)
 
 
-def get_products() -> list[dict]:
+def get_products(offset: int = 0, limit: int = 100) -> dict:
     if not _check_sb():
-        return []
+        return {"items": [], "total": 0}
     with httpx.Client(timeout=10) as c:
         r = c.get(
             _sb_url("products"),
-            headers=_sb_headers(),
-            params={"select": "id,name,code,alias", "order": "name.asc"},
+            headers=_sb_headers("count=exact"),
+            params={
+                "select": "id,name,code,alias",
+                "order": "name.asc",
+                "limit": str(limit),
+                "offset": str(offset),
+            },
         )
         r.raise_for_status()
-        return r.json()
+    # Parse total from Content-Range: 0-99/347
+    total = 0
+    content_range = r.headers.get("content-range", "")
+    if "/" in content_range:
+        try:
+            total = int(content_range.split("/")[1])
+        except (ValueError, IndexError):
+            total = len(r.json())
+    return {"items": r.json(), "total": total}
 
 
 # ── Services ───────────────────────────────────────────────────────────────────
