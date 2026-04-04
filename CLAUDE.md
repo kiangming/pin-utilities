@@ -41,10 +41,14 @@ PIN/
 │       ├── bootstrap_service.py ← fetch_config (curl subprocess), start_batch (background thread), get_job
 │       └── sdk_version_service.py ← fetch_all_snapshots, build_summary, build_detail
 ├── sync/                        ← Chạy thủ công / cron, KHÔNG deploy lên Railway
-│   ├── run_sync.py              ← Entry point: MCP game_list → sdk_version_snapshot → Supabase
-│   ├── mcp_client.py            ← JSON-RPC 2.0 over HTTP, fetch_game_list, fetch_sdk_snapshot
+│   ├── run_sync.py              ← Entry point: 2 MCP calls → map/filter → Supabase
+│   ├── mcp_client.py            ← JSON-RPC 2.0 over HTTP, fetch_game_list, fetch_sdk_snapshot, fetch_sdk_snapshot_all
 │   ├── supabase_writer.py       ← upsert_batch via REST API (merge-duplicates)
 │   ├── requirements.txt         ← httpx, python-dotenv
+│   ├── .gitignore               ← exclude data/, .env, *.log
+│   ├── data/                    ← Intermediate files (gitignored, overwrite mỗi lần chạy)
+│   │   ├── game_list.json       ← Output bước 1: list game ACTIVE/NOT_RELEASED
+│   │   └── snapshot_data.json   ← Output bước 2: full snapshot từ MCP
 │   └── .env                     ← MCP_BASE_URL, MCP_BEARER_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY (KHÔNG commit)
 ├── frontend/
 │   ├── index.html               ← Main app (tất cả tools)
@@ -556,6 +560,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.4** | **Mar 2026** | **Detail view redesign: merged cells, dropdown filter, fix search focus, group hover** |
 | **v4.5** | **Mar 2026** | **Fix "latest" badge: semver comparison (`_parse_version`); rename popular version label → "Most Popular"** |
 | **v4.6** | **Mar 2026** | **Version Distribution redesign: bigger donut (180px), 2-column compact legend, bordered badges; cache-busting `?v=` query string** |
+| **v4.7** | **Apr 2026** | **Export Excel (Detail tab, theo filter); Sync script refactor: 2 MCP calls + intermediate data files** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -613,6 +618,25 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 - **Cache-busting:** Thêm `?v=X.X` query string vào tất cả `<script>` và `<link>` trong `index.html`
   - Bump version khi deploy JS/CSS mới để force browser reload, tránh stale cache
 
+### v4.7 chi tiết
+- **Export Excel — Detail tab (`sdk-versions.js`):**
+  - Nút `⬇ Export Excel` nằm cuối filter bar (margin-left: auto)
+  - `exportExcel()`: lấy data qua `_applyFilters()` — respect toàn bộ filter hiện tại
+  - Group và sort theo `_sortGroups()` — thứ tự khớp với table đang hiển thị
+  - Cột export: Game ID, Product Name, Platform, Latest Version, Adoption (%), Stable Version, Stable Adoption (%), Status, Mismatch, Snapshot Date
+  - Filename: `sdk-versions-YYYY-MM-DD.xlsx` (no filter) / `sdk-versions-filtered-YYYY-MM-DD.xlsx` (có filter)
+  - Dùng **SheetJS** (`xlsx.full.min.js` CDN) — không cần backend
+  - CSS: `.sdkv-export-btn` — hover màu xanh lá
+- **Sync script refactor — 2 MCP calls:**
+  - **Trước:** N+1 calls (1 `game_list` + 1 `sdk_version_snapshot` per game)
+  - **Sau:** 2 calls flat:
+    - Call 1: `fetch_game_list()` → save `sync/data/game_list.json`
+    - Call 2: `fetch_sdk_snapshot_all()` (không có `game_id`) → save `sync/data/snapshot_data.json`
+    - Map step: filter snapshot theo `game_id` trong game_list, attach `product_name`
+  - `sync/data/` gitignored, overwrite mỗi lần chạy, giữ lại để debug
+  - Thêm `fetch_sdk_snapshot_all()` vào `mcp_client.py` — gọi `sdk_version_snapshot` arguments `{}`
+  - `sync/.gitignore` mới: exclude `data/`, `.env`, `*.log`, `__pycache__/`
+
 ---
 
 ## 16. Tool 4: SDK Version Management — SdkVersionPanel v2.0
@@ -623,9 +647,10 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 ```
 sync/ (chạy thủ công / cron, KHÔNG deploy Railway)
   run_sync.py
-    1. fetch_game_list()  → MCP tool "game_list" (filter ACTIVE/NOT_RELEASED)
-    2. fetch_sdk_snapshot(game_id) → MCP tool "sdk_version_snapshot" per game
-    3. upsert_batch()     → Supabase REST API (merge-duplicates, on_conflict=game_id,platform)
+    1. fetch_game_list()        → MCP "game_list" (ACTIVE/NOT_RELEASED) → data/game_list.json
+    2. fetch_sdk_snapshot_all() → MCP "sdk_version_snapshot" (no filter) → data/snapshot_data.json
+    3. Map & filter             → loại bỏ records không có trong game_list
+    4. upsert_batch()           → Supabase REST API (merge-duplicates, on_conflict=game_id,platform)
 
 backend/
   routers/sdk_versions.py         ← GET /api/sdk-versions/summary, /detail
@@ -645,9 +670,18 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 - `fetch_game_list()`: gọi tool `game_list`, filter ACTIVE/NOT_RELEASED
   - game_id fallback: `game_id → product_code → id → gameId` (MCP thường trả `game_id: null`, ID thực ở `product_code`)
   - product_name: `product_name → name → ""`
-- `fetch_sdk_snapshot(game_id)`: gọi tool `sdk_version_snapshot`
+- `fetch_sdk_snapshot_all()`: gọi tool `sdk_version_snapshot` với `arguments: {}` — trả về toàn bộ data
+- `fetch_sdk_snapshot(game_id)`: vẫn giữ lại để dùng riêng lẻ nếu cần
 - `ALLOWED_COLUMNS` filter trước khi upsert để tránh lỗi column không tồn tại
 - Dedup theo `(game_id, platform)` trước upsert tránh ON CONFLICT conflict
+
+### 16.3b Sync script — run_sync.py (v2.0 flow)
+- `DATA_DIR = sync/data/` — tạo tự động nếu chưa tồn tại
+- `GAME_LIST_FILE = data/game_list.json` — format: `{synced_at, count, games: [{game_id, product_name}]}`
+- `SNAPSHOT_FILE  = data/snapshot_data.json` — format: `{synced_at, count, records: [...]}`
+- Cả 2 file overwrite mỗi lần chạy, gitignored, giữ lại để debug
+- Map step: `game_id_set` + `product_name_map` từ game_list → filter snapshot → attach product_name
+- Log rõ: N games, M snapshot records, K records sau filter, X records upserted
 
 ### 16.4 Backend service
 - `SELECT_ALL` bao gồm `product_name`
@@ -718,6 +752,7 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 | `.sdkv-legend-badge` | Base badge style cho version legend (9px, bold, transparent bg) |
 | `.sdkv-badge-latest` | Badge "Latest" — purple/accent fill + border (semver newest version) |
 | `.sdkv-badge-popular` | Badge "Most Popular" — green fill + border (highest game count version) |
+| `.sdkv-export-btn` | Nút Export Excel — margin-left:auto, hover xanh lá |
 
 ### 16.9 Security rules
 - `MCP_BEARER_TOKEN` chỉ trong `sync/.env` — KHÔNG commit, KHÔNG lên Railway
@@ -736,15 +771,17 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 | **AX-18** | `applySearch()` / `applyFilter()` gọi `_applyAndRenderTable()` — KHÔNG gọi `_renderDetail()` (sẽ mất focus input) |
 | **AX-19** | `_buildDetailShell()` render 1 lần duy nhất — KHÔNG rebuild khi filter thay đổi |
 | **AX-20** | game_id trong sync: dùng `product_code` làm fallback khi `game_id: null` từ MCP |
+| **AX-21** | Sync script dùng 2 MCP calls — KHÔNG loop `fetch_sdk_snapshot(game_id)` per game |
+| **AX-22** | `sync/data/` gitignored — KHÔNG commit file game_list.json hoặc snapshot_data.json |
 
 ---
 
 ## 17. Hướng phát triển tiếp theo (Backlog)
 
-- **v4.7:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
-- **v4.7:** Export filtered data to Excel/CSV (Pipeline + SDK Versions)
-- **v4.7:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
-- **v4.7:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
+- **v4.8:** Preset date ranges Pipeline ("Tháng này", "Q2 2026", "30 ngày tới")
+- **v4.8:** Export Excel cho Pipeline Detail
+- **v4.8:** Notification badge trên nav khi có CBT/OB trong 7 ngày tới
+- **v4.8:** SDK Versions — pagination hoặc virtual scroll khi có nhiều games
 - **Future:** Date filter cho tab Pipeline "Closed"
 - **Future:** Lưu date range preference vào localStorage
 - **Future:** Sorting/grouping trong Stats timeline theo owner hoặc market
