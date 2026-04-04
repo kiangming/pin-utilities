@@ -75,6 +75,26 @@ def _build_signature_debug(client_secret: str, params: dict) -> tuple[str, dict]
         "hash_string_before_sha1": hash_string,
         "signature": signature,
     }
+
+    if settings.debug_ticket_api:
+        masked = client_secret[:4] + "*" * max(0, len(client_secret) - 4)
+        print("\n========== SIGNATURE BUILD ==========", flush=True)
+        print(f"[1] sha1(client_secret)", flush=True)
+        print(f"    client_secret = \"{masked}\"", flush=True)
+        print(f"    sha1          = \"{secret_hash}\"", flush=True)
+        print(f"\n[2] Params sau ksort:", flush=True)
+        for s in steps:
+            if "appended" in s:
+                note_str = f" | {s['note']}" if s.get("note") else ""
+                print(f"    key=\"{s['key']}\" | raw={json.dumps(s['raw'])}{note_str}", flush=True)
+                print(f"         append → \"{s['appended']}\"", flush=True)
+            else:
+                print(f"    key=\"{s['key']}\" | raw={json.dumps(s['raw'])} | {s['action']}", flush=True)
+        print(f"\n[3] hash_string_before_sha1:", flush=True)
+        print(f"    \"{hash_string}\"", flush=True)
+        print(f"\n[4] signature = \"{signature}\"", flush=True)
+        print("=====================================\n", flush=True)
+
     return signature, debug
 
 
