@@ -11,9 +11,11 @@ const TicketReminderPanel = (() => {
   let _remindList = [];             // tickets cần nhắc (need_remind=true)
   let _allTickets = [];             // tất cả tickets từ fetch
   let _services = [];               // cached services list
+  let _statuses = [];               // cached statuses list
   let _selectedServiceIds = new Set();
-  let _statusTags = [];
+  let _selectedStatusIds = new Set();
   let _pickerOpen = false;
+  let _statusPickerOpen = false;
   let _configTabsLoaded = {};       // { webhooks: true, ... }
   let _debugMode = localStorage.getItem('tkrDebugMode') === 'true';
 
@@ -23,6 +25,7 @@ const TicketReminderPanel = (() => {
     if (_booted) return;
     _booted = true;
     _loadServices();
+    _loadStatuses();
     _renderFetchView();
   }
 
@@ -106,7 +109,14 @@ const TicketReminderPanel = (() => {
     const createdFrom = document.getElementById('tkr-date-from').value || '';
     const createdTo = document.getElementById('tkr-date-to').value || '';
     const serviceIds = [..._selectedServiceIds];
-    const statuses = [..._statusTags];
+    const statuses = _statuses
+      .filter(s => _selectedStatusIds.has(s.id))
+      .map(s => s.name);
+
+    if (statuses.length === 0) {
+      _showToast('Vui lòng chọn ít nhất 1 Status trước khi fetch.', 'err');
+      return;
+    }
 
     _sentTicketIds = new Set();
     _allTickets = [];
@@ -137,9 +147,9 @@ const TicketReminderPanel = (() => {
     document.getElementById('tkr-date-from').value = '';
     document.getElementById('tkr-date-to').value = '';
     _selectedServiceIds = new Set();
-    _statusTags = [];
+    _selectedStatusIds = new Set();
     _renderServiceChips();
-    _renderStatusTags();
+    _renderStatusChips();
     _showFetchEmpty();
   }
 
@@ -226,6 +236,21 @@ const TicketReminderPanel = (() => {
     });
   }
 
+  function syncStatuses() {
+    const btn = document.getElementById('tkr-sync-statuses-btn');
+    if (btn) btn.disabled = true;
+    ApiClient.post('/api/remind/statuses/sync', {}).then(res => {
+      _showToast(`Đã sync ${res.synced} statuses`, 'info');
+      if (_debugMode && res.debug_requests) _showDebugDialog(res.debug_requests);
+      _loadStatuses();
+      _loadConfigTab('statuses');
+    }).catch(err => {
+      _showToast('Lỗi sync statuses: ' + (err.message || err), 'err');
+    }).finally(() => {
+      if (btn) btn.disabled = false;
+    });
+  }
+
   function syncServices() {
     const btn = document.getElementById('tkr-sync-services-btn');
     if (btn) btn.disabled = true;
@@ -272,18 +297,24 @@ const TicketReminderPanel = (() => {
     _renderServiceChips();
   }
 
-  function addStatusTag(input) {
-    if (input.key !== 'Enter') return;
-    const val = input.target.value.trim();
-    if (!val || _statusTags.includes(val)) { input.target.value = ''; return; }
-    _statusTags.push(val);
-    input.target.value = '';
-    _renderStatusTags();
+  function toggleStatusPickerPanel() {
+    const panel = document.getElementById('tkr-status-panel');
+    if (!panel) return;
+    _statusPickerOpen = !_statusPickerOpen;
+    panel.classList.toggle('open', _statusPickerOpen);
   }
 
-  function removeStatusTag(idx) {
-    _statusTags.splice(idx, 1);
-    _renderStatusTags();
+  function toggleStatus(id, checked) {
+    if (checked) _selectedStatusIds.add(id);
+    else _selectedStatusIds.delete(id);
+    _renderStatusChips();
+  }
+
+  function removeStatusChip(id) {
+    _selectedStatusIds.delete(id);
+    const cb = document.querySelector(`#tkr-status-panel input[data-id="${id}"]`);
+    if (cb) cb.checked = false;
+    _renderStatusChips();
   }
 
   // ── Config CRUD — Webhooks ─────────────────────────────────────────────────
@@ -511,10 +542,15 @@ const TicketReminderPanel = (() => {
             </div>
           </div>
           <div class="tkr-field tkr-field--wide">
-            <label class="tkr-label">Statuses (Enter để thêm)</label>
-            <div class="tkr-tag-input" onclick="this.querySelector('.tkr-tag-text-input').focus()">
-              <div id="tkr-status-tags"></div>
-              <input class="tkr-tag-text-input" placeholder="VD: In Progress" onkeydown="TicketReminderPanel.addStatusTag(event)">
+            <label class="tkr-label">Statuses <span style="color:#ef4444;">*</span></label>
+            <div class="tkr-tag-input" id="tkr-statuses-wrap">
+              <div id="tkr-status-chips"></div>
+              <div class="tkr-picker-wrap">
+                <span class="tkr-picker-trigger" onclick="TicketReminderPanel.toggleStatusPickerPanel()">+ Chọn status</span>
+                <div class="tkr-picker-panel" id="tkr-status-panel">
+                  <div id="tkr-status-list"></div>
+                </div>
+              </div>
             </div>
           </div>
           <div class="tkr-field tkr-field--sm">
@@ -719,12 +755,14 @@ const TicketReminderPanel = (() => {
           <button class="tkr-config-tab-btn" data-tab="templates" onclick="TicketReminderPanel.switchConfigTab('templates')">Templates</button>
           <button class="tkr-config-tab-btn" data-tab="handlers" onclick="TicketReminderPanel.switchConfigTab('handlers')">Handlers</button>
           <button class="tkr-config-tab-btn" data-tab="services" onclick="TicketReminderPanel.switchConfigTab('services')">Services</button>
+          <button class="tkr-config-tab-btn" data-tab="statuses" onclick="TicketReminderPanel.switchConfigTab('statuses')">Statuses</button>
           <button class="tkr-config-tab-btn" data-tab="logs" onclick="TicketReminderPanel.switchConfigTab('logs')">Logs</button>
         </div>
         <div id="tkr-tab-webhooks"  class="tkr-tab-content" data-tab="webhooks"></div>
         <div id="tkr-tab-templates" class="tkr-tab-content" data-tab="templates" style="display:none;"></div>
         <div id="tkr-tab-handlers"  class="tkr-tab-content" data-tab="handlers"  style="display:none;"></div>
         <div id="tkr-tab-services"  class="tkr-tab-content" data-tab="services"  style="display:none;"></div>
+        <div id="tkr-tab-statuses"  class="tkr-tab-content" data-tab="statuses"  style="display:none;"></div>
         <div id="tkr-tab-logs"      class="tkr-tab-content" data-tab="logs"      style="display:none;"></div>
       </div>
       <div class="tkr-toast-wrap" id="tkr-toasts-config"></div>
@@ -759,6 +797,12 @@ const TicketReminderPanel = (() => {
     } else if (tab === 'services') {
       ApiClient.get('/api/remind/services').then(rows => {
         container.innerHTML = _buildServicesTab(rows);
+      }).catch(err => {
+        container.innerHTML = `<div class="tkr-error-card">${_esc(String(err))}</div>`;
+      });
+    } else if (tab === 'statuses') {
+      ApiClient.get('/api/remind/statuses').then(rows => {
+        container.innerHTML = _buildStatusesTab(rows);
       }).catch(err => {
         container.innerHTML = `<div class="tkr-error-card">${_esc(String(err))}</div>`;
       });
@@ -918,6 +962,28 @@ const TicketReminderPanel = (() => {
               <td style="font-family:monospace;color:var(--text3);">${s.id}</td>
               <td>${_esc(s.name)}</td>
               <td style="font-size:11px;color:var(--text3);">${_esc(s.description || '')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function _buildStatusesTab(rows) {
+    return `
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <button class="tkr-btn-primary" id="tkr-sync-statuses-btn" onclick="TicketReminderPanel.syncStatuses()">⟳ Sync Statuses</button>
+        <span class="tkr-sync-info">${rows.length} statuses trong DB</span>
+      </div>
+      <table class="tkr-config-table">
+        <thead><tr><th>ID</th><th>Name</th><th>Closed?</th></tr></thead>
+        <tbody>
+          ${rows.length === 0 ? `<tr><td colspan="3"><div class="tkr-empty"><div class="tkr-empty-icon">📊</div><div class="tkr-empty-text">Chưa sync. Nhấn Sync Statuses.</div></div></td></tr>` : ''}
+          ${rows.map(s => `
+            <tr>
+              <td style="font-family:monospace;color:var(--text3);">${s.id}</td>
+              <td>${_esc(s.name)}</td>
+              <td>${s.is_closed ? '✓' : ''}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -1098,22 +1164,56 @@ const TicketReminderPanel = (() => {
     `).join('');
   }
 
-  function _renderStatusTags() {
-    const container = document.getElementById('tkr-status-tags');
-    if (!container) return;
-    container.innerHTML = _statusTags.map((t, i) => `
-      <span class="tkr-tag">
-        ${_esc(t)}
-        <span class="tkr-tag-remove" onclick="TicketReminderPanel.removeStatusTag(${i})">×</span>
-      </span>
+  function _loadStatuses() {
+    ApiClient.get('/api/remind/statuses').then(rows => {
+      _statuses = rows;
+      _renderStatusPickerItems();
+    }).catch(() => {});
+  }
+
+  function _renderStatusPickerItems() {
+    const list = document.getElementById('tkr-status-list');
+    if (!list) return;
+    if (_statuses.length === 0) {
+      list.innerHTML = '<div style="padding:8px;font-size:12px;color:var(--text3);">Chưa có dữ liệu. Sync trong Remind Config → Statuses.</div>';
+      return;
+    }
+    list.innerHTML = _statuses.map(s => `
+      <label class="tkr-picker-item ${_selectedStatusIds.has(s.id) ? 'active' : ''}">
+        <input type="checkbox" data-id="${s.id}" ${_selectedStatusIds.has(s.id) ? 'checked' : ''}
+          onchange="TicketReminderPanel.toggleStatus(${s.id}, this.checked)">
+        ${_esc(s.name)}${s.is_closed ? ' <span style="font-size:10px;color:var(--text3);">(closed)</span>' : ''}
+      </label>
     `).join('');
   }
 
+  function _renderStatusChips() {
+    const container = document.getElementById('tkr-status-chips');
+    if (!container) return;
+    const selected = _statuses.filter(s => _selectedStatusIds.has(s.id));
+    container.innerHTML = selected.map(s => `
+      <span class="tkr-tag">
+        ${_esc(s.name)}
+        <span class="tkr-tag-remove" onclick="TicketReminderPanel.removeStatusChip(${s.id})">×</span>
+      </span>
+    `).join('');
+    // update active state on picker items
+    document.querySelectorAll('#tkr-status-list .tkr-picker-item').forEach(el => {
+      const cb = el.querySelector('input[data-id]');
+      if (cb) el.classList.toggle('active', _selectedStatusIds.has(Number(cb.dataset.id)));
+    });
+  }
+
   function _handlePickerOutsideClick(e) {
-    const wrap = document.querySelector('.tkr-picker-wrap');
-    if (wrap && !wrap.contains(e.target)) {
+    const svcWrap = document.getElementById('tkr-services-wrap');
+    if (svcWrap && !svcWrap.contains(e.target)) {
       const panel = document.getElementById('tkr-svc-panel');
       if (panel) { panel.classList.remove('open'); _pickerOpen = false; }
+    }
+    const statusWrap = document.getElementById('tkr-statuses-wrap');
+    if (statusWrap && !statusWrap.contains(e.target)) {
+      const panel = document.getElementById('tkr-status-panel');
+      if (panel) { panel.classList.remove('open'); _statusPickerOpen = false; }
     }
   }
 
@@ -1180,12 +1280,14 @@ const TicketReminderPanel = (() => {
     sendRemind,
     syncProducts,
     syncServices,
+    syncStatuses,
     togglePickerPanel,
     filterPickerItems,
     toggleService,
     removeServiceChip,
-    addStatusTag,
-    removeStatusTag,
+    toggleStatusPickerPanel,
+    toggleStatus,
+    removeStatusChip,
     showWebhookForm,
     hideWebhookForm,
     saveWebhook,

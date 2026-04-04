@@ -393,6 +393,23 @@ async def get_services(session: SessionData = Depends(require_session)):
     return remind_db.get_services()
 
 
+# ── Statuses ───────────────────────────────────────────────────────────────────
+
+@router.post("/statuses/sync")
+async def sync_statuses(session: SessionData = Depends(require_session)):
+    debug_collector: list | None = [] if settings.debug_ticket_api else None
+    statuses, err = ticket_service.fetch_statuses(_request_user(session), debug_collector=debug_collector)
+    if err:
+        raise HTTPException(status_code=502, detail=err)
+    count = remind_db.upsert_statuses(statuses)
+    return {"synced": count, "debug_requests": debug_collector}
+
+
+@router.get("/statuses")
+async def get_statuses(session: SessionData = Depends(require_session)):
+    return remind_db.get_statuses()
+
+
 # ── Logs ───────────────────────────────────────────────────────────────────────
 
 @router.get("/logs")

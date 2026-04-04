@@ -296,6 +296,28 @@ def fetch_products(request_user: str, debug_collector: list | None = None) -> tu
         return [], f"Error fetching products: {e}"
 
 
+def fetch_statuses(request_user: str, debug_collector: list | None = None) -> tuple[list, str | None]:
+    """GET /statuses."""
+    sig_params = {"requestUser": request_user}
+    req_url = f"{BASE_URL}/statuses?requestUser={request_user}"
+    req_headers = _make_auth_headers(sig_params, debug_collector=debug_collector)
+    if debug_collector is not None and debug_collector:
+        debug_collector[-1]["url"] = req_url
+        debug_collector[-1]["request_headers"] = {
+            k: v for k, v in req_headers.items() if k != "Content-Type"
+        }
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.get(req_url, headers=req_headers)
+        _log_http("STATUSES", req_url, req_headers, resp)
+        resp.raise_for_status()
+        return resp.json().get("data", []), None
+    except httpx.HTTPStatusError:
+        return [], f"Error fetching statuses: HTTP {resp.status_code}"
+    except Exception as e:
+        return [], f"Error fetching statuses: {e}"
+
+
 def fetch_services(request_user: str, debug_collector: list | None = None) -> tuple[list, str | None]:
     """GET /services."""
     sig_params = {"requestUser": request_user}

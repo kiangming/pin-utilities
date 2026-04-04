@@ -315,3 +315,39 @@ def get_services() -> list[dict]:
         )
         r.raise_for_status()
         return r.json()
+
+
+# ── Statuses ──────────────────────────────────────────────────────────────────
+
+def upsert_statuses(statuses: list[dict]) -> int:
+    if not statuses or not _check_sb():
+        return 0
+    rows = [
+        {
+            "id": s["id"],
+            "name": s.get("name", ""),
+            "is_closed": s.get("isClosed", False),
+        }
+        for s in statuses
+    ]
+    with httpx.Client(timeout=10) as c:
+        r = c.post(
+            _sb_url("ticket_statuses"),
+            headers=_sb_headers("resolution=merge-duplicates"),
+            json=rows,
+        )
+        r.raise_for_status()
+    return len(rows)
+
+
+def get_statuses() -> list[dict]:
+    if not _check_sb():
+        return []
+    with httpx.Client(timeout=10) as c:
+        r = c.get(
+            _sb_url("ticket_statuses"),
+            headers=_sb_headers(),
+            params={"select": "id,name,is_closed", "order": "name.asc"},
+        )
+        r.raise_for_status()
+        return r.json()

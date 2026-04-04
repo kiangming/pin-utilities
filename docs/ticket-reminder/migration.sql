@@ -60,6 +60,13 @@ CREATE TABLE services (
   synced_at   TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE ticket_statuses (
+  id        INTEGER PRIMARY KEY,
+  name      TEXT NOT NULL,
+  is_closed BOOLEAN NOT NULL DEFAULT false,
+  synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Seed: 2 default templates
 INSERT INTO remind_templates (name, content, is_default) VALUES
   ('Sandbox Expiry EN', 'Hi {requester_name}, the sandbox account for {product_name} (ticket #{ticket_id}) {time_label}. Do you need to extend it? If so, please leave a comment on the ticket. Thank you!', true),
