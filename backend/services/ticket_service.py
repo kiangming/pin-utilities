@@ -98,6 +98,24 @@ def _build_signature_debug(client_secret: str, params: dict) -> tuple[str, dict]
     return signature, debug
 
 
+def _log_http(label: str, url: str, headers: dict, resp: httpx.Response) -> None:
+    """Print request + response khi DEBUG_TICKET_API=true."""
+    if not settings.debug_ticket_api:
+        return
+    print(f"\n========== {label} ==========", flush=True)
+    print(f"REQUEST  {url}", flush=True)
+    for k, v in headers.items():
+        print(f"  {k}: {v}", flush=True)
+    print(f"RESPONSE {resp.status_code}", flush=True)
+    try:
+        body = resp.json()
+        text = json.dumps(body, ensure_ascii=False)
+        print(f"  {text[:500]}{'...' if len(text) > 500 else ''}", flush=True)
+    except Exception:
+        print(f"  {resp.text[:500]}", flush=True)
+    print("=" * (len(label) + 22), flush=True)
+
+
 def _make_auth_headers(params: dict, debug_collector: list | None = None) -> dict:
     """Tạo headers client-id, timestamp, signature. Nếu debug_collector được truyền, append debug info."""
     ts = str(int(time.time() * 1000))
@@ -187,6 +205,8 @@ def fetch_all_tickets(
                 }
             with httpx.Client(timeout=30) as client:
                 resp = client.get(req_url, headers=req_headers)
+            if page == 1:
+                _log_http("TICKETS page 1", req_url, req_headers, resp)
             if resp.status_code == 401:
                 return [], "External API: 401 UNAUTHORIZED — signature sai hoặc timestamp lệch"
             if resp.status_code == 403:
@@ -267,8 +287,11 @@ def fetch_products(request_user: str, debug_collector: list | None = None) -> tu
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.get(req_url, headers=req_headers)
+        _log_http("PRODUCTS", req_url, req_headers, resp)
         resp.raise_for_status()
         return resp.json().get("data", []), None
+    except httpx.HTTPStatusError:
+        return [], f"Error fetching products: HTTP {resp.status_code}"
     except Exception as e:
         return [], f"Error fetching products: {e}"
 
@@ -286,7 +309,10 @@ def fetch_services(request_user: str, debug_collector: list | None = None) -> tu
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.get(req_url, headers=req_headers)
+        _log_http("SERVICES", req_url, req_headers, resp)
         resp.raise_for_status()
         return resp.json().get("data", []), None
+    except httpx.HTTPStatusError:
+        return [], f"Error fetching services: HTTP {resp.status_code}"
     except Exception as e:
         return [], f"Error fetching services: {e}"
