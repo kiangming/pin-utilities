@@ -569,6 +569,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.6** | **Mar 2026** | **Version Distribution redesign: bigger donut (180px), 2-column compact legend, bordered badges; cache-busting `?v=` query string** |
 | **v4.7** | **Apr 2026** | **Export Excel (Detail tab, theo filter); Sync script refactor: 2 MCP calls + intermediate data files** |
 | **v4.8** | **Apr 2026** | **Tool 5: Ticket Reminder — fetch Nexus tickets, phân tích needRemind, gửi Teams webhook** |
+| **v4.8.1** | **Apr 2026** | **Debug mode: signature trace + request/response log (DEBUG_TICKET_API env var)** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -973,7 +974,54 @@ TICKET_API_CLIENT_ID=...
 TICKET_API_CLIENT_SECRET=...
 SUPABASE_URL=...          (tái dụng từ sdk-versions)
 SUPABASE_SERVICE_KEY=...  (tái dụng từ sdk-versions)
+DEBUG_TICKET_API=false    (set true để bật debug logging — tắt trên production)
 ```
+
+### 18.8b Debug Mode
+
+Khi `DEBUG_TICKET_API=true`, mỗi request đến Nexus API sẽ print ra Railway logs:
+
+**Signature trace** (giống format `api-test.js`):
+```
+========== SIGNATURE BUILD ==========
+[1] sha1(client_secret) = "508dd96a..."
+[2] Params sau ksort:
+    key="client-id" | raw="STORE"  → append "|STORE"
+    key="requestUser" | raw="minhgv" → append "|minhgv"
+    ...
+[3] hash_string_before_sha1: "508dd96a...|STORE|minhgv|..."
+[4] signature = "c2b8a793..."
+=====================================
+```
+
+**Request + Response log:**
+```
+========== PRODUCTS ==========
+REQUEST  https://ticket.../products?requestUser=...
+  client-id: STORE
+  timestamp: 17753...
+  signature: c2b8a7...
+RESPONSE 200
+  {"data": [...]}
+================================
+```
+
+**Frontend debug toggle:**
+- Nút 🐛 Debug ở góc phải header của Ticket Fetch panel
+- Trạng thái lưu vào `localStorage` (`tkrDebugMode`)
+- Khi on + job done/error → tự popup dialog với signature trace của request đầu tiên
+- `syncProducts()` / `syncServices()` cũng tự popup dialog khi debug on
+
+**Endpoints in debug:**
+- `fetch_all_tickets` — log page 1 request
+- `fetch_products` — log full request/response
+- `fetch_services` — log full request/response
+
+**Workflow debug signature:**
+1. Chạy `api-test.js` local với cùng params → note `hash_string_before_sha1`
+2. Gọi endpoint Python → xem Railway logs → so sánh `hash_string_before_sha1`
+3. Nếu giống → algorithm đúng, vấn đề ở credentials hoặc server
+4. Nếu khác → tìm step đầu tiên diverge
 
 ### 18.9 Anti-regression rules (Ticket Reminder)
 
@@ -986,6 +1034,8 @@ SUPABASE_SERVICE_KEY=...  (tái dụng từ sdk-versions)
 | **AX-27** | `_sentTicketIds` reset khi fetch mới — chỉ prevent double-send trong cùng session |
 | **AX-28** | `fetch_ticket_detail()` chỉ gọi khi `need_remind=True` — không fetch thừa |
 | **AX-29** | CSS prefix `tkr-` giữ nguyên, không conflict với `pl-`, `pls-`, `sdkv-` |
+| **AX-30** | `DEBUG_TICKET_API` chỉ dùng để debug — KHÔNG để `true` trên production |
+| **AX-31** | `_log_http` và `_build_signature_debug` chỉ chạy khi `settings.debug_ticket_api=True` — không ảnh hưởng production performance |
 
 ---
 
