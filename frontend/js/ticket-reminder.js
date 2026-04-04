@@ -218,6 +218,7 @@ const TicketReminderPanel = (() => {
     if (btn) btn.disabled = true;
     ApiClient.post('/api/remind/products/sync', {}).then(res => {
       _showToast(`Đã sync ${res.synced} products`, 'info');
+      if (_debugMode && res.debug_requests) _showDebugDialog(res.debug_requests);
     }).catch(err => {
       _showToast('Lỗi sync products: ' + (err.message || err), 'err');
     }).finally(() => {
@@ -230,6 +231,7 @@ const TicketReminderPanel = (() => {
     if (btn) btn.disabled = true;
     ApiClient.post('/api/remind/services/sync', {}).then(res => {
       _showToast(`Đã sync ${res.synced} services`, 'info');
+      if (_debugMode && res.debug_requests) _showDebugDialog(res.debug_requests);
       _loadServices();
       _loadConfigTab('services');
     }).catch(err => {
@@ -978,6 +980,9 @@ const TicketReminderPanel = (() => {
 
       if (job.status === 'error') {
         _showFetchError(job.error || 'Lỗi không xác định');
+        if (_debugMode && job.debug_requests) {
+          _showDebugDialog(job.debug_requests);
+        }
         return;
       }
 
@@ -986,7 +991,6 @@ const TicketReminderPanel = (() => {
       const area = document.getElementById('tkr-result-area');
       if (area) _renderTicketTable(area);
 
-      // Debug dialog
       if (_debugMode && job.result && job.result.debug_requests) {
         _showDebugDialog(job.result.debug_requests);
       }

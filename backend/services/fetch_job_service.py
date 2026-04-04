@@ -58,6 +58,7 @@ def _run_fetch(job_id: str, filters: dict, request_user: str, threshold: int) ->
     if err:
         job["status"] = "error"
         job["error"] = err
+        job["debug_requests"] = debug_collector  # lưu cả khi error để frontend có thể show
         return
 
     # ── Phase 2: Fetch comments for each ticket ────────────────────────────────

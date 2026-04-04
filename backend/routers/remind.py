@@ -7,6 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.config import settings
 from backend.middleware.auth_guard import require_session
 from backend.models.schemas import SessionData
 from backend.services import (
@@ -362,11 +363,12 @@ async def delete_handler(
 
 @router.post("/products/sync")
 async def sync_products(session: SessionData = Depends(require_session)):
-    products, err = ticket_service.fetch_products(_request_user(session))
+    debug_collector: list | None = [] if settings.debug_ticket_api else None
+    products, err = ticket_service.fetch_products(_request_user(session), debug_collector=debug_collector)
     if err:
         raise HTTPException(status_code=502, detail=err)
     count = remind_db.upsert_products(products)
-    return {"synced": count}
+    return {"synced": count, "debug_requests": debug_collector}
 
 
 @router.get("/products")
@@ -378,11 +380,12 @@ async def get_products(session: SessionData = Depends(require_session)):
 
 @router.post("/services/sync")
 async def sync_services(session: SessionData = Depends(require_session)):
-    services, err = ticket_service.fetch_services(_request_user(session))
+    debug_collector: list | None = [] if settings.debug_ticket_api else None
+    services, err = ticket_service.fetch_services(_request_user(session), debug_collector=debug_collector)
     if err:
         raise HTTPException(status_code=502, detail=err)
     count = remind_db.upsert_services(services)
-    return {"synced": count}
+    return {"synced": count, "debug_requests": debug_collector}
 
 
 @router.get("/services")
