@@ -41,6 +41,17 @@ def get_job(job_id: str) -> dict | None:
     return _fetch_jobs.get(job_id)
 
 
+def _sort_tickets(tickets: list[dict]) -> list[dict]:
+    """need_remind=true lên đầu, sau đó sort theo diff_days tăng dần."""
+    return sorted(
+        tickets,
+        key=lambda t: (
+            0 if t["need_remind"] else 1,
+            t["diff_days"] if t["diff_days"] is not None else 9999,
+        ),
+    )
+
+
 def _run_fetch(job_id: str, filters: dict, request_user: str, threshold: int) -> None:
     job = _fetch_jobs[job_id]
 
@@ -58,7 +69,7 @@ def _run_fetch(job_id: str, filters: dict, request_user: str, threshold: int) ->
     if err:
         job["status"] = "error"
         job["error"] = err
-        job["debug_requests"] = debug_collector  # lưu cả khi error để frontend có thể show
+        job["debug_requests"] = debug_collector
         return
 
     # ── Phase 2: Fetch comments for each ticket ────────────────────────────────
@@ -73,45 +84,26 @@ def _run_fetch(job_id: str, filters: dict, request_user: str, threshold: int) ->
         handler_usernames = set()
 
     remind_items: list[dict] = []
-    no_due_date_count = 0
 
     for ticket in all_tickets:
-        # Bỏ qua ticket không có due_date
-        if not ticket.get("due_date"):
-            no_due_date_count += 1
-            job["comments_done"] += 1
-            continue
-
-        # diff_days > threshold → không cần fetch comment (optimization)
-        diff = filter_service.calc_diff_days(ticket.get("due_date"))
-        if diff is not None and diff > threshold:
-            item = filter_service.build_remind_item(ticket, [], handler_usernames, threshold)
-            remind_items.append(item)
-            job["comments_done"] += 1
-            continue
-
-        # Fetch comments
         comments, _err = ticket_service.fetch_ticket_comments(ticket["id"], request_user)
         item = filter_service.build_remind_item(ticket, comments, handler_usernames, threshold)
-
-        # Fetch ticket detail để lấy ticketUrl (chỉ cho tickets cần nhắc)
-        if item["need_remind"]:
-            detail, _err2 = ticket_service.fetch_ticket_detail(ticket["id"], request_user)
-            if detail:
-                item["ticket_url"] = detail.get("ticketUrl")
-
         remind_items.append(item)
         job["comments_done"] += 1
         time.sleep(0.1)  # 100ms delay
 
+    # ── Sort: need_remind=true trước, sau đó expire_in tăng dần ───────────────
+    remind_items = _sort_tickets(remind_items)
+
     # ── Kết quả ────────────────────────────────────────────────────────────────
-    remind_list = [t for t in remind_items if t["need_remind"]]
+    remind_count = sum(1 for t in remind_items if t["need_remind"])
+    no_due_date_count = sum(1 for t in remind_items if t["diff_days"] is None)
 
     job["status"] = "done"
     job["phase"] = "done"
     job["result"] = {
         "total": len(all_tickets),
-        "remind_count": len(remind_list),
+        "remind_count": remind_count,
         "no_due_date_count": no_due_date_count,
         "tickets": remind_items,
         "debug_requests": debug_collector,

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from datetime import date
 
+TICKET_URL_TEMPLATE = "https://nexus.vnggames.com/home/tickets-v2/{id}"
+
 
 def calc_diff_days(due_date_str: str | None) -> int | None:
     """
@@ -68,6 +70,33 @@ def format_due_date(due_date_str: str) -> str:
         return due_date_str or ""
 
 
+def _extract_product(ticket: dict) -> tuple[str, str]:
+    """Lấy product id và name từ ticket.
+    API có thể trả về 'product' (object) hoặc 'products' (array).
+    """
+    # Thử dạng object trước (theo spec mới)
+    product = ticket.get("product")
+    if product and isinstance(product, dict):
+        return str(product.get("id", "")), product.get("name", "")
+    # Fallback: dạng array cũ
+    products = ticket.get("products") or []
+    if products:
+        return str(products[0].get("id", "")), products[0].get("name", "")
+    return "", ""
+
+
+def _extract_last_comment(comments: list) -> dict | None:
+    """Trích thông tin comment cuối cùng."""
+    if not comments:
+        return None
+    last = comments[-1]
+    return {
+        "name":       last.get("name", ""),
+        "notes":      last.get("notes", ""),
+        "created_on": last.get("created_on", ""),
+    }
+
+
 def build_remind_item(
     ticket: dict,
     comments: list,
@@ -81,6 +110,7 @@ def build_remind_item(
     diff_days = calc_diff_days(due_date)
     need_remind = is_need_remind(ticket, comments, handler_usernames, threshold)
 
+    # Last comment — structured object + legacy username fields
     last_comment_by = ""
     last_comment_is_handler = False
     if comments:
@@ -88,10 +118,9 @@ def build_remind_item(
         last_comment_by = (last.get("user") or {}).get("username", "")
         last_comment_is_handler = last_comment_by in handler_usernames
 
-    products = ticket.get("products") or []
-    product_name = products[0].get("name", "") if products else ""
-
+    product_id, product_name = _extract_product(ticket)
     requester = ticket.get("requester") or {}
+    handler = ticket.get("handler") or {}
 
     time_label = ""
     due_date_fmt = ""
@@ -100,18 +129,23 @@ def build_remind_item(
         due_date_fmt = format_due_date(due_date)
 
     return {
-        "id": ticket.get("id"),
-        "title": ticket.get("title", ""),
+        "id":           ticket.get("id"),
+        "ticket_url":   TICKET_URL_TEMPLATE.format(id=ticket.get("id", "")),
+        "product_id":   product_id,
         "product_name": product_name,
-        "requester_name": requester.get("fullname", ""),
+        "title":        ticket.get("title", ""),
+        "requester_name":  requester.get("fullname", ""),
         "requester_login": requester.get("login", ""),
-        "status": (ticket.get("status") or {}).get("name", ""),
-        "due_date": due_date,
+        "assignee_name":   handler.get("fullname", ""),
+        "created_at":      ticket.get("created_at", ""),
+        "status":       (ticket.get("status") or {}).get("name", ""),
+        "due_date":     due_date,
         "due_date_fmt": due_date_fmt,
-        "diff_days": diff_days,
-        "need_remind": need_remind,
-        "time_label": time_label,
-        "last_comment_by": last_comment_by,
+        "diff_days":    diff_days,
+        "need_remind":  need_remind,
+        "time_label":   time_label,
+        # Last comment — structured (for display) + legacy fields (for send_remind compat)
+        "last_comment":          _extract_last_comment(comments),
+        "last_comment_by":       last_comment_by,
         "last_comment_is_handler": last_comment_is_handler,
-        "ticket_url": None,  # populated sau khi gọi fetch_ticket_detail
     }

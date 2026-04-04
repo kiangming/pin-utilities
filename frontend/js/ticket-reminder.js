@@ -638,47 +638,103 @@ const TicketReminderPanel = (() => {
         </button>
       </div>
       <div class="tkr-table-wrap">
-        <table class="tkr-table">
+        <table class="tkr-table tkr-table--tickets">
+          <colgroup>
+            <col style="width:80px">
+            <col style="width:140px">
+            <col style="min-width:180px">
+            <col style="width:110px">
+            <col style="width:110px">
+            <col style="width:90px">
+            <col style="width:88px">
+            <col style="width:78px">
+            <col style="width:90px">
+            <col style="width:220px">
+          </colgroup>
           <thead>
             <tr>
-              <th>#</th>
-              <th>ID</th>
+              <th>Ticket ID</th>
               <th>Product</th>
+              <th>Title</th>
               <th>Requester</th>
+              <th>Assignee</th>
+              <th>Created</th>
               <th>Due Date</th>
-              <th>Nhắc?</th>
+              <th>Expire In</th>
+              <th>Need Remind</th>
               <th>Last Comment</th>
             </tr>
           </thead>
           <tbody>
-            ${_allTickets.map((t, i) => _buildTicketRow(t, i + 1)).join('')}
+            ${_allTickets.map(t => _buildTicketRow(t)).join('')}
           </tbody>
         </table>
       </div>
     `;
   }
 
-  function _buildTicketRow(t, idx) {
-    const rowClass = t.diff_days !== null && t.diff_days < 0 ? 'tkr-row--overdue'
-      : t.diff_days !== null && t.diff_days <= 3 ? 'tkr-row--warning' : '';
-    const dueClass = t.diff_days !== null && t.diff_days < 0 ? 'tkr-due--overdue'
-      : t.diff_days !== null && t.diff_days <= 3 ? 'tkr-due--urgent' : 'tkr-due--normal';
-    const dueText = t.diff_days !== null
-      ? (t.diff_days < 0 ? `${Math.abs(t.diff_days)}d quá hạn` : `${t.diff_days}d`) : '—';
+  function _buildTicketRow(t) {
+    const rowClass = t.need_remind
+      ? (t.diff_days !== null && t.diff_days < 0 ? 'tkr-row--overdue'
+        : t.diff_days !== null && t.diff_days <= 3 ? 'tkr-row--warning'
+        : 'tkr-row--remind')
+      : '';
+
+    // Expire In pill
+    const expireClass = t.diff_days === null ? ''
+      : t.diff_days < 0 ? 'tkr-expire--overdue'
+      : t.diff_days <= 3 ? 'tkr-expire--urgent'
+      : t.diff_days <= 7 ? 'tkr-expire--warning'
+      : 'tkr-expire--ok';
+    const expireText = t.diff_days === null ? '—'
+      : t.diff_days < 0 ? `-${Math.abs(t.diff_days)}d`
+      : `${t.diff_days}d`;
+
+    // Need Remind badge
     const remindBadge = t.need_remind
-      ? '<span class="tkr-badge-remind">✓ Nhắc</span>'
+      ? '<span class="tkr-badge-remind">✓ Remind</span>'
       : '<span class="tkr-badge-skip">—</span>';
+
+    // Product: "id - name"
+    const productLabel = t.product_id
+      ? `${_esc(t.product_id)} - ${_esc(t.product_name)}`
+      : _esc(t.product_name || '—');
+
+    // Dates: format dd/MM/yyyy (backend already sends formatted created_at or raw ISO)
+    const createdFmt = _fmtDate(t.created_at);
+    const dueFmt = t.due_date_fmt || _fmtDate(t.due_date);
+
+    // Last comment block
+    const lc = t.last_comment;
+    const lastCommentHtml = lc && (lc.name || lc.notes)
+      ? `<div class="tkr-last-comment">
+           <div class="tkr-lc-name">${_esc(lc.name)}</div>
+           <div class="tkr-lc-notes">${_esc(lc.notes)}</div>
+           <div class="tkr-lc-date">${_esc(lc.created_on)}</div>
+         </div>`
+      : '<span style="color:var(--text3);font-size:11px;">—</span>';
+
     return `
       <tr class="${rowClass}">
-        <td>${idx}</td>
-        <td><a href="${_esc(t.ticket_url || '#')}" target="_blank" style="color:var(--accent);text-decoration:none;">#${t.id}</a></td>
-        <td>${_esc(t.product_name)}</td>
-        <td>${_esc(t.requester_name)}</td>
-        <td><span class="tkr-due ${dueClass}">${dueText}</span></td>
+        <td><a class="tkr-ticket-link" href="${_esc(t.ticket_url)}" target="_blank" rel="noopener">#${t.id}</a></td>
+        <td class="tkr-product-cell">${productLabel}</td>
+        <td class="tkr-title-cell">${_esc(t.title || '—')}</td>
+        <td>${_esc(t.requester_name || '—')}</td>
+        <td style="color:var(--text2);">${_esc(t.assignee_name || '—')}</td>
+        <td style="font-size:11px;color:var(--text3);">${createdFmt}</td>
+        <td style="font-size:11px;color:var(--text2);">${dueFmt || '—'}</td>
+        <td><span class="tkr-expire ${expireClass}">${expireText}</span></td>
         <td>${remindBadge}</td>
-        <td style="font-size:11px;color:var(--text3);">${_esc(t.last_comment_by || '—')}</td>
+        <td>${lastCommentHtml}</td>
       </tr>
     `;
+  }
+
+  function _fmtDate(iso) {
+    if (!iso) return '—';
+    // Support both "YYYY-MM-DD" and "YYYY-MM-DDTHH:mm:ss" formats
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
   }
 
   function _renderRemindView() {
