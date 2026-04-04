@@ -178,10 +178,16 @@ const TicketReminderPanel = (() => {
     if (mode === 'all') {
       if (chkCol) chkCol.style.display = 'none';
       if (headerChk) headerChk.style.display = 'none';
+      document.querySelectorAll('.tkr-row-chk').forEach(chk => {
+        chk.closest('td').style.display = 'none';
+      });
       _updateSendBtn();
     } else {
       if (chkCol) chkCol.style.display = '';
       if (headerChk) headerChk.style.display = '';
+      document.querySelectorAll('.tkr-row-chk').forEach(chk => {
+        chk.closest('td').style.display = '';
+      });
       _updateSendBtn();
     }
   }
