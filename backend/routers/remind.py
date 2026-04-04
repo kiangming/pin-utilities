@@ -374,7 +374,7 @@ async def sync_products(session: SessionData = Depends(require_session)):
 @router.get("/products")
 async def get_products(
     offset: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=500),
     session: SessionData = Depends(require_session),
 ):
     return remind_db.get_products(offset=offset, limit=limit)
