@@ -49,7 +49,7 @@ def _make_auth_headers(params: dict) -> dict:
     """Tạo headers client-id, timestamp, signature."""
     ts = str(int(time.time() * 1000))
     hash_data = {
-        "client_id": settings.ticket_api_client_id,
+        "client-id": settings.ticket_api_client_id,
         "timestamp": ts,
         **params,
     }
