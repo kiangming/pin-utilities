@@ -15,6 +15,7 @@ const TicketReminderPanel = (() => {
   let _statusTags = [];
   let _pickerOpen = false;
   let _configTabsLoaded = {};       // { webhooks: true, ... }
+  let _debugMode = localStorage.getItem('tkrDebugMode') === 'true';
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -23,6 +24,66 @@ const TicketReminderPanel = (() => {
     _booted = true;
     _loadServices();
     _renderFetchView();
+  }
+
+  function toggleDebugMode() {
+    _debugMode = !_debugMode;
+    localStorage.setItem('tkrDebugMode', _debugMode);
+    const btn = document.getElementById('tkr-debug-toggle');
+    if (btn) {
+      btn.classList.toggle('active', _debugMode);
+      btn.title = _debugMode ? 'Debug ON — click để tắt' : 'Debug OFF — click để bật';
+    }
+    _showToast(_debugMode ? '🐛 Debug mode ON' : 'Debug mode OFF', 'info');
+  }
+
+  function closeDebugDialog() {
+    const el = document.getElementById('tkr-debug-dialog');
+    if (el) el.remove();
+  }
+
+  function _showDebugDialog(debugRequests) {
+    closeDebugDialog();
+    if (!debugRequests || !debugRequests.length) return;
+    const d = debugRequests[0];
+    const lines = [
+      '── URL ─────────────────────────────────────',
+      d.url || '(unknown)',
+      '',
+      '── Request Headers ─────────────────────────',
+      JSON.stringify(d.request_headers || {}, null, 2),
+      '',
+      '── Signature Params (sau ksort) ─────────────',
+      JSON.stringify(d.hash_data || {}, null, 2),
+      '',
+      '── Steps ────────────────────────────────────',
+      ...(d.steps || []).map(s =>
+        s.appended
+          ? `  [${s.key}] = ${JSON.stringify(s.raw)}${s.note ? '\n    note: ' + s.note : ''}\n    append → "${s.appended}"`
+          : `  [${s.key}] = ${JSON.stringify(s.raw)} → ${s.action}`
+      ),
+      '',
+      '── Hash string trước sha1 ───────────────────',
+      d.hash_string_before_sha1 || '',
+      '',
+      '── Signature ────────────────────────────────',
+      d.signature || '',
+    ].join('\n');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'tkr-debug-dialog';
+    overlay.className = 'tkr-debug-overlay';
+    overlay.innerHTML = `
+      <div class="tkr-debug-dialog">
+        <div class="tkr-debug-header">
+          <span>🐛 Debug — Signature Trace (Page 1)</span>
+          <button class="tkr-debug-close" onclick="TicketReminderPanel.closeDebugDialog()">✕</button>
+        </div>
+        <pre class="tkr-debug-body">${_esc(lines)}</pre>
+      </div>
+    `;
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeDebugDialog(); });
+    document.body.appendChild(overlay);
   }
 
   function switchConfigTab(tab) {
@@ -414,6 +475,9 @@ const TicketReminderPanel = (() => {
       <div class="tkr-panel" id="tkr-fetch-panel">
         <div class="tkr-header">
           <div class="tkr-title">🎫 Ticket Fetch</div>
+          <button id="tkr-debug-toggle" class="tkr-debug-toggle ${_debugMode ? 'active' : ''}"
+            title="${_debugMode ? 'Debug ON — click để tắt' : 'Debug OFF — click để bật'}"
+            onclick="TicketReminderPanel.toggleDebugMode()">🐛 Debug</button>
         </div>
         ${_buildFilterCard()}
         <div id="tkr-result-area" class="tkr-result-area"></div>
@@ -921,6 +985,11 @@ const TicketReminderPanel = (() => {
       _allTickets = (job.result && job.result.tickets) || [];
       const area = document.getElementById('tkr-result-area');
       if (area) _renderTicketTable(area);
+
+      // Debug dialog
+      if (_debugMode && job.result && job.result.debug_requests) {
+        _showDebugDialog(job.result.debug_requests);
+      }
     }).catch(() => {
       // silent fail, keep polling
     });
@@ -1128,5 +1197,7 @@ const TicketReminderPanel = (() => {
     saveHandler,
     deleteHandler,
     filterLogs,
+    toggleDebugMode,
+    closeDebugDialog,
   };
 })();

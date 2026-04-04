@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 
+from backend.config import settings
 from backend.services import ticket_service, filter_service, remind_db
 
 # In-memory job store (tồn tại trong process lifetime)
@@ -50,7 +51,10 @@ def _run_fetch(job_id: str, filters: dict, request_user: str, threshold: int) ->
         job["tickets_page"] = page
         job["tickets_total_pages"] = last_page
 
-    all_tickets, err = ticket_service.fetch_all_tickets(filters, request_user, on_page=_on_page)
+    debug_collector: list | None = [] if settings.debug_ticket_api else None
+    all_tickets, err = ticket_service.fetch_all_tickets(
+        filters, request_user, on_page=_on_page, debug_collector=debug_collector
+    )
     if err:
         job["status"] = "error"
         job["error"] = err
@@ -109,4 +113,5 @@ def _run_fetch(job_id: str, filters: dict, request_user: str, threshold: int) ->
         "remind_count": len(remind_list),
         "no_due_date_count": no_due_date_count,
         "tickets": remind_items,
+        "debug_requests": debug_collector,
     }

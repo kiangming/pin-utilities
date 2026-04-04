@@ -17,43 +17,80 @@ BASE_URL = settings.ticket_api_base_url
 
 # ── Signature Auth ─────────────────────────────────────────────────────────────
 
+def _html_entity_decode(s: str) -> str:
+    return (
+        s.replace("&amp;", "&")
+         .replace("&lt;", "<")
+         .replace("&gt;", ">")
+         .replace("&quot;", '"')
+         .replace("&#039;", "'")
+    )
+
+
 def _build_signature(client_secret: str, params: dict) -> str:
-    """
-    Port từ buildSignature() trong api-test.js.
-    params: dict gồm client_id + timestamp + tất cả query params.
-    """
+    """Port từ buildSignature() trong api-test.js."""
     sorted_params = dict(sorted(params.items()))
     hash_string = hashlib.sha1(client_secret.encode()).hexdigest()
 
     for value in sorted_params.values():
         if isinstance(value, list):
-            # PHP array_filter: loại bỏ falsy values, json_encode compact
             filtered = [v for v in value if v]
             value = json.dumps(filtered, separators=(",", ":"))
         str_val = str(value) if value is not None else ""
-        # html_entity_decode basic
-        str_val = (
-            str_val
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&quot;", '"')
-        )
+        str_val = _html_entity_decode(str_val)
         if str_val:
             hash_string += "|" + str_val
 
     return hashlib.sha1(hash_string.encode()).hexdigest()
 
 
-def _make_auth_headers(params: dict) -> dict:
-    """Tạo headers client-id, timestamp, signature."""
+def _build_signature_debug(client_secret: str, params: dict) -> tuple[str, dict]:
+    """Giống _build_signature nhưng capture từng bước. Trả về (signature, debug_dict)."""
+    sorted_params = dict(sorted(params.items()))
+    secret_hash = hashlib.sha1(client_secret.encode()).hexdigest()
+    hash_string = secret_hash
+    steps = []
+
+    for key, value in sorted_params.items():
+        original = value
+        note = None
+        if isinstance(value, list):
+            filtered = [v for v in value if v]
+            encoded = json.dumps(filtered, separators=(",", ":"))
+            note = f"array → json_encode(array_filter) = {encoded}"
+            value = encoded
+        str_val = str(value) if value is not None else ""
+        str_val = _html_entity_decode(str_val)
+        if str_val:
+            hash_string += "|" + str_val
+            steps.append({"key": key, "raw": original, "appended": f"|{str_val}", "note": note})
+        else:
+            steps.append({"key": key, "raw": original, "action": "SKIPPED (empty/falsy)", "note": note})
+
+    signature = hashlib.sha1(hash_string.encode()).hexdigest()
+    debug = {
+        "sorted_params": sorted_params,
+        "secret_hash": secret_hash,
+        "steps": steps,
+        "hash_string_before_sha1": hash_string,
+        "signature": signature,
+    }
+    return signature, debug
+
+
+def _make_auth_headers(params: dict, debug_collector: list | None = None) -> dict:
+    """Tạo headers client-id, timestamp, signature. Nếu debug_collector được truyền, append debug info."""
     ts = str(int(time.time() * 1000))
     hash_data = {
         "client-id": settings.ticket_api_client_id,
         "timestamp": ts,
         **params,
     }
-    sig = _build_signature(settings.ticket_api_client_secret, hash_data)
+    if debug_collector is not None:
+        sig, sig_debug = _build_signature_debug(settings.ticket_api_client_secret, hash_data)
+        debug_collector.append({"hash_data": hash_data, **sig_debug})
+    else:
+        sig = _build_signature(settings.ticket_api_client_secret, hash_data)
     return {
         "client-id": settings.ticket_api_client_id,
         "timestamp": ts,
@@ -68,11 +105,13 @@ def fetch_all_tickets(
     filters: dict,
     request_user: str,
     on_page: callable | None = None,
+    debug_collector: list | None = None,
 ) -> tuple[list, str | None]:
     """
     Fetch tất cả tickets (loop pages). delay 300ms giữa pages.
     filters: service_ids, statuses, assignee, created_at_from, created_at_to, per_page
     on_page(page, last_page): callback cập nhật progress (optional)
+    debug_collector: nếu truyền vào, capture debug info cho page đầu tiên
     Returns (tickets, error_message)
     """
     all_tickets: list[dict] = []
@@ -117,11 +156,17 @@ def fetch_all_tickets(
             sig_params["created_at_to"] = filters["created_at_to"]
 
         try:
+            # Capture debug info chỉ cho page 1
+            page_debug = debug_collector if (page == 1 and debug_collector is not None) else None
+            req_url = f"{BASE_URL}/tickets?{query_str}"
+            req_headers = _make_auth_headers(sig_params, debug_collector=page_debug)
+            if page_debug is not None and page_debug:
+                page_debug[-1]["url"] = req_url
+                page_debug[-1]["request_headers"] = {
+                    k: v for k, v in req_headers.items() if k != "Content-Type"
+                }
             with httpx.Client(timeout=30) as client:
-                resp = client.get(
-                    f"{BASE_URL}/tickets?{query_str}",
-                    headers=_make_auth_headers(sig_params),
-                )
+                resp = client.get(req_url, headers=req_headers)
             if resp.status_code == 401:
                 return [], "External API: 401 UNAUTHORIZED — signature sai hoặc timestamp lệch"
             if resp.status_code == 403:

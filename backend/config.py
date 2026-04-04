@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     ticket_api_base_url: str = "https://ticket.vnggames.net/integration/v1"
     ticket_api_client_id: str = ""
     ticket_api_client_secret: str = ""
+    debug_ticket_api: bool = False
 
     # Server — Railway inject PORT tự động
     host: str = "0.0.0.0"
