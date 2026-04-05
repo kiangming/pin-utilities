@@ -55,7 +55,7 @@ def send_mention_message(
                 "content": {
                     "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                     "type": "AdaptiveCard",
-                    "version": "1.0",
+                    "version": "1.2",
                     "body": [{"type": "TextBlock", "text": message_text, "wrap": True}],
                     "msteams": {"entities": [mention_entity]},
                 },
