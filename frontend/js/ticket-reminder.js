@@ -21,6 +21,7 @@ const TicketReminderPanel = (() => {
   let _productsPage = 0;
   let _webhookProducts = [];        // products cache for webhook form picker
   let _webhookProductPickerOpen = false;
+  let _pendingWebhooks = [];        // staged new webhooks before batch save
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -408,8 +409,11 @@ const TicketReminderPanel = (() => {
     form.querySelector('#tkr-wh-url').value = data ? data.webhook_url : '';
     form.querySelector('#tkr-wh-default').checked = data ? !!data.is_default : false;
     _loadTemplateSelect('tkr-wh-template', data ? data.template_id : null);
+    const saveBtn = form.querySelector('.tkr-save-btn');
+    if (saveBtn) saveBtn.textContent = data ? 'Cập nhật' : '+ Thêm vào danh sách';
     form.classList.add('visible');
     form.querySelector('#tkr-wh-channel').focus();
+    _renderPendingSection();
   }
 
   function hideWebhookForm() {
@@ -425,29 +429,106 @@ const TicketReminderPanel = (() => {
       product_name: (document.getElementById('tkr-wh-product-name').value || '').trim(),
       product_code: (document.getElementById('tkr-wh-product-code').value || '').trim(),
       channel_name: form.querySelector('#tkr-wh-channel').value.trim(),
-      webhook_url: form.querySelector('#tkr-wh-url').value.trim(),
-      template_id: form.querySelector('#tkr-wh-template').value || null,
-      is_default: form.querySelector('#tkr-wh-default').checked,
+      webhook_url:  form.querySelector('#tkr-wh-url').value.trim(),
+      template_id:  form.querySelector('#tkr-wh-template').value || null,
+      is_default:   form.querySelector('#tkr-wh-default').checked,
     };
     if (!payload.product_name || !payload.channel_name || !payload.webhook_url) {
       _showToast('Vui lòng điền đầy đủ thông tin', 'err');
       return;
     }
+
+    // Edit mode — save directly to API
+    if (editId) {
+      const saveBtn = form.querySelector('.tkr-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+      ApiClient.put(`/api/remind/webhooks/${editId}`, payload).then(() => {
+        _showToast('Đã cập nhật webhook', 'ok');
+        hideWebhookForm();
+        _configTabsLoaded['webhooks'] = false;
+        _loadConfigTab('webhooks');
+      }).catch(err => {
+        _showToast('Lỗi: ' + (err.message || err), 'err');
+      }).finally(() => {
+        if (saveBtn) saveBtn.disabled = false;
+      });
+      return;
+    }
+
+    // New mode — stage into pending list
+    _pendingWebhooks.push(payload);
+    _renderPendingSection();
+    _resetWebhookForm();
+  }
+
+  function removePendingWebhook(idx) {
+    _pendingWebhooks.splice(idx, 1);
+    _renderPendingSection();
+  }
+
+  function saveAllWebhooks() {
+    if (!_pendingWebhooks.length) return;
+    const btn = document.getElementById('tkr-wh-save-all-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ Đang lưu...'; }
+
+    Promise.all(_pendingWebhooks.map(p => ApiClient.post('/api/remind/webhooks', p)))
+      .then(() => {
+        _showToast(`Đã lưu ${_pendingWebhooks.length} webhook`, 'ok');
+        _pendingWebhooks = [];
+        _configTabsLoaded['webhooks'] = false;
+        _loadConfigTab('webhooks');
+      }).catch(err => {
+        _showToast('Lỗi: ' + (err.message || err), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = `💾 Lưu tất cả (${_pendingWebhooks.length})`; }
+      });
+  }
+
+  function _resetWebhookForm() {
+    const form = document.getElementById('tkr-webhook-form');
+    if (!form) return;
+    form.dataset.editId = '';
+    document.getElementById('tkr-wh-product-name').value = '';
+    document.getElementById('tkr-wh-product-code').value = '';
+    const display = document.getElementById('tkr-wh-product-display');
+    if (display) { display.textContent = '— Chọn product —'; display.style.color = 'var(--text3)'; }
+    form.querySelector('#tkr-wh-channel').value = '';
+    form.querySelector('#tkr-wh-url').value = '';
+    form.querySelector('#tkr-wh-default').checked = false;
     const saveBtn = form.querySelector('.tkr-save-btn');
-    if (saveBtn) saveBtn.disabled = true;
-    const req = editId
-      ? ApiClient.put(`/api/remind/webhooks/${editId}`, payload)
-      : ApiClient.post('/api/remind/webhooks', payload);
-    req.then(() => {
-      _showToast(editId ? 'Đã cập nhật webhook' : 'Đã thêm webhook', 'ok');
-      hideWebhookForm();
-      _configTabsLoaded['webhooks'] = false;
-      _loadConfigTab('webhooks');
-    }).catch(err => {
-      _showToast('Lỗi: ' + (err.message || err), 'err');
-    }).finally(() => {
-      if (saveBtn) saveBtn.disabled = false;
-    });
+    if (saveBtn) saveBtn.textContent = '+ Thêm vào danh sách';
+    _renderWebhookProductList('');
+  }
+
+  function _renderPendingSection() {
+    const section = document.getElementById('tkr-wh-pending');
+    if (!section) return;
+    if (!_pendingWebhooks.length) {
+      section.innerHTML = '';
+      return;
+    }
+    section.innerHTML = `
+      <div style="margin:14px 0 8px;font-size:12px;font-weight:600;color:var(--text2);">
+        Chờ lưu (${_pendingWebhooks.length})
+      </div>
+      <table class="tkr-config-table" style="margin-bottom:10px;">
+        <thead><tr><th>Product</th><th>Channel</th><th>Webhook URL</th><th>Default</th><th></th></tr></thead>
+        <tbody>
+          ${_pendingWebhooks.map((p, i) => `
+            <tr>
+              <td>${_esc(p.product_name)}</td>
+              <td>${_esc(p.channel_name)}</td>
+              <td class="tkr-webhook-url">${_esc((p.webhook_url || '').substring(0, 35))}...</td>
+              <td>${p.is_default ? '★' : ''}</td>
+              <td><button class="tkr-btn tkr-btn-danger" onclick="TicketReminderPanel.removePendingWebhook(${i})">✕</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <button class="tkr-btn-primary" id="tkr-wh-save-all-btn"
+        onclick="TicketReminderPanel.saveAllWebhooks()">
+        💾 Lưu tất cả (${_pendingWebhooks.length})
+      </button>
+    `;
   }
 
   function deleteWebhook(id) {
@@ -922,6 +1003,7 @@ const TicketReminderPanel = (() => {
     container.innerHTML = '<div class="tkr-progress"><div class="tkr-spinner"></div> Đang tải...</div>';
 
     if (tab === 'webhooks') {
+      _pendingWebhooks = [];
       Promise.all([
         ApiClient.get('/api/remind/webhooks'),
         ApiClient.get('/api/remind/products?offset=0&limit=500'),
@@ -999,6 +1081,7 @@ const TicketReminderPanel = (() => {
       <div style="margin-top:12px;">
         <button class="tkr-btn-primary" onclick="TicketReminderPanel.showWebhookForm(null)">+ Thêm Webhook</button>
       </div>
+      <div id="tkr-wh-pending"></div>
       <div class="tkr-inline-form" id="tkr-webhook-form">
         <div class="tkr-form-grid">
           <div class="tkr-field">
@@ -1027,7 +1110,7 @@ const TicketReminderPanel = (() => {
           </div>
         </div>
         <div class="tkr-form-actions">
-          <button class="tkr-btn-primary tkr-save-btn" onclick="TicketReminderPanel.saveWebhook()">Lưu</button>
+          <button class="tkr-btn-primary tkr-save-btn" onclick="TicketReminderPanel.saveWebhook()">+ Thêm vào danh sách</button>
           <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookForm()">Hủy</button>
         </div>
       </div>
@@ -1517,5 +1600,7 @@ const TicketReminderPanel = (() => {
     toggleWebhookProductPicker,
     filterWebhookProducts,
     selectWebhookProduct,
+    removePendingWebhook,
+    saveAllWebhooks,
   };
 })();
