@@ -3,6 +3,7 @@ Teams Service — gửi message đến Microsoft Teams Incoming Webhook.
 """
 from __future__ import annotations
 
+import json
 import time
 
 import httpx
@@ -64,6 +65,11 @@ def send_mention_message(
     else:
         payload = {"text": message_text}
 
+    print("\n========== TEAMS WEBHOOK ==========", flush=True)
+    print(f"URL: {webhook_url[:60]}...", flush=True)
+    print(f"PAYLOAD: {json.dumps(payload, ensure_ascii=False)}", flush=True)
+    print("====================================\n", flush=True)
+
     try:
         with httpx.Client(timeout=10) as client:
             resp = client.post(
@@ -71,6 +77,7 @@ def send_mention_message(
                 json=payload,
                 headers={"Content-Type": "application/json"},
             )
+        print(f"TEAMS RESPONSE: {resp.status_code} — {resp.text[:300]}", flush=True)
         if resp.status_code < 300:
             return True, None
         return False, f"Teams trả lỗi HTTP {resp.status_code}: {resp.text[:200]}"
