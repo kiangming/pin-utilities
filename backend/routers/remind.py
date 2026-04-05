@@ -117,7 +117,9 @@ async def send_remind(
 
     # Batch user lookup — single API call for all unique handler_ids
     unique_handler_ids = list({t.handler_id for t in req.tickets if t.handler_id is not None})
+    print(f"[REMIND DEBUG] unique_handler_ids: {unique_handler_ids}", flush=True)
     user_map = ticket_service.fetch_users_by_ids(unique_handler_ids)
+    print(f"[REMIND DEBUG] user_map: {user_map}", flush=True)
 
     # Load template & webhook config once
     templates = {t["id"]: t for t in remind_db.get_templates()}
@@ -176,6 +178,7 @@ async def send_remind(
         else:
             tagged_handler = ticket.assignee_name or ""
             mention = None
+        print(f"[REMIND DEBUG] ticket #{ticket.id} handler_id={ticket.handler_id} user_info={user_info} mention={mention}", flush=True)
 
         # Render message
         message = template_service.render(tmpl["content"], {
