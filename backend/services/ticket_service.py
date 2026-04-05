@@ -238,7 +238,7 @@ def fetch_all_tickets(
 
 def fetch_ticket_comments(ticket_id: int, request_user: str) -> tuple[list, str | None]:
     """GET /tickets/{id}/comments. Delay gọi bởi caller."""
-    sig_params = {"requestUser": request_user, "ticketId": ticket_id}
+    sig_params = {"requestUser": request_user}
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.get(
@@ -257,7 +257,7 @@ def fetch_ticket_comments(ticket_id: int, request_user: str) -> tuple[list, str 
 
 def fetch_ticket_detail(ticket_id: int, request_user: str) -> tuple[dict | None, str | None]:
     """GET /tickets/{id} — lấy ticketUrl."""
-    sig_params = {"requestUser": request_user, "ticketId": ticket_id}
+    sig_params = {"requestUser": request_user}
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.get(
