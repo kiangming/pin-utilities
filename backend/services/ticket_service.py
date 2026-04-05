@@ -326,11 +326,18 @@ def fetch_users_by_ids(handler_ids: list[int]) -> dict[int, dict]:
     """
     if not handler_ids:
         return {}
-    url = "https://nexus.vnggames.com/api/ticket-management/v1/users"
     ids_str = ",".join(str(i) for i in handler_ids)
+    req_url = f"https://nexus.vnggames.com/api/ticket-management/v1/users?limit=5000&ids={ids_str}"
+    if settings.debug_ticket_api:
+        print(f"\n========== FETCH USERS ==========", flush=True)
+        print(f"REQUEST  {req_url}", flush=True)
     try:
         with httpx.Client(timeout=10) as client:
-            resp = client.get(url, params={"limit": 5000, "ids": ids_str})
+            resp = client.get(req_url)
+        if settings.debug_ticket_api:
+            print(f"RESPONSE {resp.status_code}", flush=True)
+            print(f"  {resp.text[:500]}{'...' if len(resp.text) > 500 else ''}", flush=True)
+            print("==================================\n", flush=True)
         resp.raise_for_status()
         result: dict[int, dict] = {}
         for user in resp.json().get("data", []):
@@ -341,7 +348,8 @@ def fetch_users_by_ids(handler_ids: list[int]) -> dict[int, dict]:
                     "fullname": user.get("fullname", ""),
                 }
         return result
-    except Exception:
+    except Exception as e:
+        print(f"[FETCH USERS ERROR] {e}", flush=True)
         return {}
 
 
