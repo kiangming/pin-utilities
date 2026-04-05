@@ -19,9 +19,9 @@ const TicketReminderPanel = (() => {
   let _configTabsLoaded = {};       // { webhooks: true, ... }
   let _debugMode = localStorage.getItem('tkrDebugMode') === 'true';
   let _productsPage = 0;
-  let _webhookProducts = [];        // products cache for webhook form picker
-  let _webhookProductPickerOpen = false;
-  let _pendingWebhooks = [];        // staged new webhooks before batch save
+  let _webhookProducts = [];        // products cache for webhook form pickers
+  let _webhookTemplates = [];       // templates cache for webhook form selects
+  let _whRowCounter = 0;            // unique row id counter for multi-row form
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -336,39 +336,40 @@ const TicketReminderPanel = (() => {
     _renderStatusChips();
   }
 
-  // ── Webhook product picker ─────────────────────────────────────────────────
+  // ── Webhook — row-scoped product picker ───────────────────────────────────
 
-  function toggleWebhookProductPicker() {
-    const panel = document.getElementById('tkr-wh-product-panel');
+  function toggleRowProductPicker(rowId) {
+    const panel = document.getElementById(`tkr-wh-row-${rowId}-product-panel`);
     if (!panel) return;
-    _webhookProductPickerOpen = !_webhookProductPickerOpen;
-    panel.classList.toggle('open', _webhookProductPickerOpen);
-    if (_webhookProductPickerOpen) {
-      const search = document.getElementById('tkr-wh-product-search');
-      if (search) { search.value = ''; _renderWebhookProductList(''); search.focus(); }
+    const isOpen = panel.classList.contains('open');
+    document.querySelectorAll('.tkr-wh-row-product-panel').forEach(p => p.classList.remove('open'));
+    if (!isOpen) {
+      panel.classList.add('open');
+      const search = document.getElementById(`tkr-wh-row-${rowId}-product-search`);
+      if (search) { search.value = ''; _renderRowProductList(rowId, ''); search.focus(); }
     }
   }
 
-  function filterWebhookProducts(q) {
-    _renderWebhookProductList(q);
+  function filterRowProducts(rowId, q) {
+    _renderRowProductList(rowId, q);
   }
 
-  function selectWebhookProduct(name, code) {
-    document.getElementById('tkr-wh-product-name').value = name;
-    document.getElementById('tkr-wh-product-code').value = code || '';
-    const display = document.getElementById('tkr-wh-product-display');
+  function selectRowProduct(rowId, name, code) {
+    const nameEl = document.getElementById(`tkr-wh-row-${rowId}-product-name`);
+    const codeEl = document.getElementById(`tkr-wh-row-${rowId}-product-code`);
+    const display = document.getElementById(`tkr-wh-row-${rowId}-product-display`);
+    const panel  = document.getElementById(`tkr-wh-row-${rowId}-product-panel`);
+    if (nameEl) nameEl.value = name;
+    if (codeEl) codeEl.value = code || '';
     if (display) { display.textContent = name; display.style.color = 'var(--text)'; }
-    const panel = document.getElementById('tkr-wh-product-panel');
     if (panel) panel.classList.remove('open');
-    _webhookProductPickerOpen = false;
-    _renderWebhookProductList('');
   }
 
-  function _renderWebhookProductList(q) {
-    const list = document.getElementById('tkr-wh-product-list');
+  function _renderRowProductList(rowId, q) {
+    const list = document.getElementById(`tkr-wh-row-${rowId}-product-list`);
     if (!list) return;
     const query = (q || '').toLowerCase();
-    const selectedName = (document.getElementById('tkr-wh-product-name') || {}).value || '';
+    const selectedName = (document.getElementById(`tkr-wh-row-${rowId}-product-name`) || {}).value || '';
     const filtered = _webhookProducts.filter(p =>
       !query || p.name.toLowerCase().includes(query) || String(p.id).includes(query)
     );
@@ -379,7 +380,7 @@ const TicketReminderPanel = (() => {
     list.innerHTML = filtered.map(p => `
       <div class="tkr-picker-item ${p.name === selectedName ? 'active' : ''}"
         data-name="${_esc(p.name)}" data-code="${_esc(p.code || '')}"
-        onclick="TicketReminderPanel.selectWebhookProduct(this.dataset.name, this.dataset.code)">
+        onclick="TicketReminderPanel.selectRowProduct(${rowId}, this.dataset.name, this.dataset.code)">
         <span style="font-size:10px;color:var(--text3);min-width:32px;flex-shrink:0;">${p.id}</span>
         ${_esc(p.name)}
       </div>
@@ -388,147 +389,162 @@ const TicketReminderPanel = (() => {
 
   // ── Config CRUD — Webhooks ─────────────────────────────────────────────────
 
-  function showWebhookForm(data) {
-    const form = document.getElementById('tkr-webhook-form');
+  function showWebhookMultiForm() {
+    hideWebhookEditForm();
+    const form = document.getElementById('tkr-wh-add-form');
     if (!form) return;
-    form.dataset.editId = data ? data.id : '';
+    const tbody = document.getElementById('tkr-wh-rows-body');
+    if (tbody) tbody.innerHTML = '';
+    form.style.display = '';
+    addWebhookRow();
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 
-    // Product picker — pre-select if editing
-    const productName = data ? (data.product_name || '') : '';
-    const productCode = data ? (data.product_code || '') : '';
-    document.getElementById('tkr-wh-product-name').value = productName;
-    document.getElementById('tkr-wh-product-code').value = productCode;
-    const display = document.getElementById('tkr-wh-product-display');
-    if (display) {
-      display.textContent = productName || '— Chọn product —';
-      display.style.color = productName ? 'var(--text)' : 'var(--text3)';
+  function hideWebhookMultiForm() {
+    const form = document.getElementById('tkr-wh-add-form');
+    if (form) form.style.display = 'none';
+  }
+
+  function addWebhookRow() {
+    const tbody = document.getElementById('tkr-wh-rows-body');
+    if (!tbody) return;
+    const rowId = ++_whRowCounter;
+    tbody.insertAdjacentHTML('beforeend', _buildWebhookRow(rowId));
+    _updateSaveAllBtn();
+  }
+
+  function removeWebhookRow(rowId) {
+    const row = document.getElementById(`tkr-wh-row-${rowId}`);
+    if (row) row.remove();
+    _updateSaveAllBtn();
+    const tbody = document.getElementById('tkr-wh-rows-body');
+    if (tbody && tbody.children.length === 0) hideWebhookMultiForm();
+  }
+
+  function _buildWebhookRow(rowId) {
+    const templateOptions = '<option value="">— None —</option>' +
+      _webhookTemplates.map(t => `<option value="${t.id}">${_esc(t.name)}</option>`).join('');
+    return `
+      <tr id="tkr-wh-row-${rowId}" data-row="${rowId}">
+        <td>
+          <div class="tkr-tag-input" id="tkr-wh-row-${rowId}-product-wrap" style="position:relative;min-width:140px;">
+            <span id="tkr-wh-row-${rowId}-product-display"
+              class="tkr-picker-trigger" style="flex:1;cursor:pointer;font-size:12px;color:var(--text3);"
+              onclick="TicketReminderPanel.toggleRowProductPicker(${rowId})">— Chọn —</span>
+            <div class="tkr-picker-wrap">
+              <div class="tkr-picker-panel tkr-wh-row-product-panel" id="tkr-wh-row-${rowId}-product-panel" onclick="event.stopPropagation()">
+                <input class="tkr-picker-search" id="tkr-wh-row-${rowId}-product-search"
+                  placeholder="🔍 Tìm product..."
+                  oninput="TicketReminderPanel.filterRowProducts(${rowId}, this.value)">
+                <div id="tkr-wh-row-${rowId}-product-list"></div>
+              </div>
+            </div>
+            <input type="hidden" id="tkr-wh-row-${rowId}-product-name">
+            <input type="hidden" id="tkr-wh-row-${rowId}-product-code">
+          </div>
+        </td>
+        <td><input class="tkr-input" id="tkr-wh-row-${rowId}-channel" placeholder="Channel name" style="min-width:100px;"></td>
+        <td><input class="tkr-input" id="tkr-wh-row-${rowId}-url" placeholder="https://...webhook.office.com/..." style="min-width:200px;"></td>
+        <td><select class="tkr-select" id="tkr-wh-row-${rowId}-template" style="min-width:100px;">${templateOptions}</select></td>
+        <td style="text-align:center;"><input type="checkbox" id="tkr-wh-row-${rowId}-default" title="Set as Default"></td>
+        <td><button class="tkr-btn tkr-btn-danger" onclick="TicketReminderPanel.removeWebhookRow(${rowId})">✕</button></td>
+      </tr>
+    `;
+  }
+
+  function _updateSaveAllBtn() {
+    const tbody = document.getElementById('tkr-wh-rows-body');
+    const count = tbody ? tbody.children.length : 0;
+    const btn = document.getElementById('tkr-wh-save-all-btn');
+    if (btn) btn.textContent = `💾 Lưu tất cả (${count})`;
+  }
+
+  function _readAllRows() {
+    const tbody = document.getElementById('tkr-wh-rows-body');
+    if (!tbody) return [];
+    return Array.from(tbody.querySelectorAll('tr[data-row]')).map(tr => {
+      const rid = tr.dataset.row;
+      return {
+        product_name: ((document.getElementById(`tkr-wh-row-${rid}-product-name`) || {}).value || '').trim(),
+        product_code: ((document.getElementById(`tkr-wh-row-${rid}-product-code`) || {}).value || '').trim(),
+        channel_name: ((document.getElementById(`tkr-wh-row-${rid}-channel`) || {}).value || '').trim(),
+        webhook_url:  ((document.getElementById(`tkr-wh-row-${rid}-url`) || {}).value || '').trim(),
+        template_id:  (document.getElementById(`tkr-wh-row-${rid}-template`) || {}).value || null,
+        is_default:   !!((document.getElementById(`tkr-wh-row-${rid}-default`) || {}).checked),
+      };
+    });
+  }
+
+  function saveAllWebhooks() {
+    const rows = _readAllRows();
+    if (!rows.length) return;
+    const invalid = rows.filter(r => !r.product_name || !r.channel_name || !r.webhook_url);
+    if (invalid.length) {
+      _showToast(`${invalid.length} dòng chưa điền đầy đủ (Product, Channel, URL)`, 'err');
+      return;
     }
-    _renderWebhookProductList('');
+    const btn = document.getElementById('tkr-wh-save-all-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ Đang lưu...'; }
+    Promise.all(rows.map(p => ApiClient.post('/api/remind/webhooks', p)))
+      .then(() => {
+        _showToast(`Đã lưu ${rows.length} webhook`, 'ok');
+        _configTabsLoaded['webhooks'] = false;
+        _loadConfigTab('webhooks');
+      }).catch(err => {
+        _showToast('Lỗi: ' + (err.message || err), 'err');
+        if (btn) { btn.disabled = false; _updateSaveAllBtn(); }
+      });
+  }
 
-    form.querySelector('#tkr-wh-channel').value = data ? data.channel_name : '';
-    form.querySelector('#tkr-wh-url').value = data ? data.webhook_url : '';
-    form.querySelector('#tkr-wh-default').checked = data ? !!data.is_default : false;
-    _loadTemplateSelect('tkr-wh-template', data ? data.template_id : null);
-    const saveBtn = form.querySelector('.tkr-save-btn');
-    if (saveBtn) saveBtn.textContent = data ? 'Cập nhật' : '+ Thêm vào danh sách';
+  function showWebhookEditForm(data) {
+    hideWebhookMultiForm();
+    const form = document.getElementById('tkr-wh-edit-form');
+    if (!form) return;
+    form.dataset.editId = data.id;
+    document.getElementById('tkr-wh-edit-product-name').value = data.product_name || '';
+    document.getElementById('tkr-wh-edit-product-code').value = data.product_code || '';
+    document.getElementById('tkr-wh-edit-channel').value = data.channel_name || '';
+    document.getElementById('tkr-wh-edit-url').value = data.webhook_url || '';
+    document.getElementById('tkr-wh-edit-default').checked = !!data.is_default;
+    _loadTemplateSelect('tkr-wh-edit-template', data.template_id || null);
     form.classList.add('visible');
-    form.querySelector('#tkr-wh-channel').focus();
-    _renderPendingSection();
+    document.getElementById('tkr-wh-edit-channel').focus();
   }
 
-  function hideWebhookForm() {
-    const form = document.getElementById('tkr-webhook-form');
-    if (form) form.classList.remove('visible');
+  function hideWebhookEditForm() {
+    const form = document.getElementById('tkr-wh-edit-form');
+    if (form) { form.classList.remove('visible'); form.dataset.editId = ''; }
   }
 
-  function saveWebhook() {
-    const form = document.getElementById('tkr-webhook-form');
+  function saveWebhookEdit() {
+    const form = document.getElementById('tkr-wh-edit-form');
     if (!form) return;
     const editId = form.dataset.editId;
+    if (!editId) return;
     const payload = {
-      product_name: (document.getElementById('tkr-wh-product-name').value || '').trim(),
-      product_code: (document.getElementById('tkr-wh-product-code').value || '').trim(),
-      channel_name: form.querySelector('#tkr-wh-channel').value.trim(),
-      webhook_url:  form.querySelector('#tkr-wh-url').value.trim(),
-      template_id:  form.querySelector('#tkr-wh-template').value || null,
-      is_default:   form.querySelector('#tkr-wh-default').checked,
+      product_name: document.getElementById('tkr-wh-edit-product-name').value.trim(),
+      product_code: document.getElementById('tkr-wh-edit-product-code').value.trim(),
+      channel_name: document.getElementById('tkr-wh-edit-channel').value.trim(),
+      webhook_url:  document.getElementById('tkr-wh-edit-url').value.trim(),
+      template_id:  document.getElementById('tkr-wh-edit-template').value || null,
+      is_default:   document.getElementById('tkr-wh-edit-default').checked,
     };
     if (!payload.product_name || !payload.channel_name || !payload.webhook_url) {
       _showToast('Vui lòng điền đầy đủ thông tin', 'err');
       return;
     }
-
-    // Edit mode — save directly to API
-    if (editId) {
-      const saveBtn = form.querySelector('.tkr-save-btn');
-      if (saveBtn) saveBtn.disabled = true;
-      ApiClient.put(`/api/remind/webhooks/${editId}`, payload).then(() => {
-        _showToast('Đã cập nhật webhook', 'ok');
-        hideWebhookForm();
-        _configTabsLoaded['webhooks'] = false;
-        _loadConfigTab('webhooks');
-      }).catch(err => {
-        _showToast('Lỗi: ' + (err.message || err), 'err');
-      }).finally(() => {
-        if (saveBtn) saveBtn.disabled = false;
-      });
-      return;
-    }
-
-    // New mode — stage into pending list
-    _pendingWebhooks.push(payload);
-    _renderPendingSection();
-    _resetWebhookForm();
-  }
-
-  function removePendingWebhook(idx) {
-    _pendingWebhooks.splice(idx, 1);
-    _renderPendingSection();
-  }
-
-  function saveAllWebhooks() {
-    if (!_pendingWebhooks.length) return;
-    const btn = document.getElementById('tkr-wh-save-all-btn');
-    if (btn) { btn.disabled = true; btn.textContent = '⟳ Đang lưu...'; }
-
-    Promise.all(_pendingWebhooks.map(p => ApiClient.post('/api/remind/webhooks', p)))
-      .then(() => {
-        _showToast(`Đã lưu ${_pendingWebhooks.length} webhook`, 'ok');
-        _pendingWebhooks = [];
-        _configTabsLoaded['webhooks'] = false;
-        _loadConfigTab('webhooks');
-      }).catch(err => {
-        _showToast('Lỗi: ' + (err.message || err), 'err');
-        if (btn) { btn.disabled = false; btn.textContent = `💾 Lưu tất cả (${_pendingWebhooks.length})`; }
-      });
-  }
-
-  function _resetWebhookForm() {
-    const form = document.getElementById('tkr-webhook-form');
-    if (!form) return;
-    form.dataset.editId = '';
-    document.getElementById('tkr-wh-product-name').value = '';
-    document.getElementById('tkr-wh-product-code').value = '';
-    const display = document.getElementById('tkr-wh-product-display');
-    if (display) { display.textContent = '— Chọn product —'; display.style.color = 'var(--text3)'; }
-    form.querySelector('#tkr-wh-channel').value = '';
-    form.querySelector('#tkr-wh-url').value = '';
-    form.querySelector('#tkr-wh-default').checked = false;
     const saveBtn = form.querySelector('.tkr-save-btn');
-    if (saveBtn) saveBtn.textContent = '+ Thêm vào danh sách';
-    _renderWebhookProductList('');
-  }
-
-  function _renderPendingSection() {
-    const section = document.getElementById('tkr-wh-pending');
-    if (!section) return;
-    if (!_pendingWebhooks.length) {
-      section.innerHTML = '';
-      return;
-    }
-    section.innerHTML = `
-      <div style="margin:14px 0 8px;font-size:12px;font-weight:600;color:var(--text2);">
-        Chờ lưu (${_pendingWebhooks.length})
-      </div>
-      <table class="tkr-config-table" style="margin-bottom:10px;">
-        <thead><tr><th>Product</th><th>Channel</th><th>Webhook URL</th><th>Default</th><th></th></tr></thead>
-        <tbody>
-          ${_pendingWebhooks.map((p, i) => `
-            <tr>
-              <td>${_esc(p.product_name)}</td>
-              <td>${_esc(p.channel_name)}</td>
-              <td class="tkr-webhook-url">${_esc((p.webhook_url || '').substring(0, 35))}...</td>
-              <td>${p.is_default ? '★' : ''}</td>
-              <td><button class="tkr-btn tkr-btn-danger" onclick="TicketReminderPanel.removePendingWebhook(${i})">✕</button></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <button class="tkr-btn-primary" id="tkr-wh-save-all-btn"
-        onclick="TicketReminderPanel.saveAllWebhooks()">
-        💾 Lưu tất cả (${_pendingWebhooks.length})
-      </button>
-    `;
+    if (saveBtn) saveBtn.disabled = true;
+    ApiClient.put(`/api/remind/webhooks/${editId}`, payload).then(() => {
+      _showToast('Đã cập nhật webhook', 'ok');
+      hideWebhookEditForm();
+      _configTabsLoaded['webhooks'] = false;
+      _loadConfigTab('webhooks');
+    }).catch(err => {
+      _showToast('Lỗi: ' + (err.message || err), 'err');
+    }).finally(() => {
+      if (saveBtn) saveBtn.disabled = false;
+    });
   }
 
   function deleteWebhook(id) {
@@ -825,11 +841,13 @@ const TicketReminderPanel = (() => {
   }
 
   function _buildTicketRow(t) {
-    const rowClass = t.need_remind
-      ? (t.diff_days !== null && t.diff_days < 0 ? 'tkr-row--overdue'
-        : t.diff_days !== null && t.diff_days <= 3 ? 'tkr-row--warning'
-        : 'tkr-row--remind')
-      : '';
+    const reminded = _sentTicketIds.has(t.id);
+    const rowClass = reminded ? 'tkr-row--reminded'
+      : t.need_remind
+        ? (t.diff_days !== null && t.diff_days < 0 ? 'tkr-row--overdue'
+          : t.diff_days !== null && t.diff_days <= 3 ? 'tkr-row--warning'
+          : 'tkr-row--remind')
+        : '';
 
     // Expire In pill
     const expireClass = t.diff_days === null ? ''
@@ -842,13 +860,15 @@ const TicketReminderPanel = (() => {
       : `${t.diff_days}d`;
 
     // Need Remind badge
-    const remindBadge = t.need_remind
-      ? '<span class="tkr-badge-remind">✓ Remind</span>'
-      : '<span class="tkr-badge-skip">—</span>';
+    const remindBadge = reminded
+      ? '<span class="tkr-badge-reminded">✓ Reminded</span>'
+      : t.need_remind
+        ? '<span class="tkr-badge-remind">✓ Remind</span>'
+        : '<span class="tkr-badge-skip">—</span>';
 
-    // Product: "id - name"
+    // Product: "id - [code - name]"
     const productLabel = t.product_id
-      ? `${_esc(t.product_id)} - ${_esc(t.product_name)}`
+      ? `${_esc(t.product_id)} - [${_esc(t.product_code || '')}${t.product_code ? ' - ' : ''}${_esc(t.product_name)}]`
       : _esc(t.product_name || '—');
 
     // Dates: format dd/MM/yyyy (backend already sends formatted created_at or raw ISO)
@@ -1003,12 +1023,13 @@ const TicketReminderPanel = (() => {
     container.innerHTML = '<div class="tkr-progress"><div class="tkr-spinner"></div> Đang tải...</div>';
 
     if (tab === 'webhooks') {
-      _pendingWebhooks = [];
       Promise.all([
         ApiClient.get('/api/remind/webhooks'),
         ApiClient.get('/api/remind/products?offset=0&limit=500'),
-      ]).then(([rows, productsRes]) => {
+        ApiClient.get('/api/remind/templates'),
+      ]).then(([rows, productsRes, templates]) => {
         _webhookProducts = productsRes.items || [];
+        _webhookTemplates = templates || [];
         container.innerHTML = _buildWebhooksTab(rows);
       }).catch(err => {
         container.innerHTML = `<div class="tkr-error-card">${_esc(String(err))}</div>`;
@@ -1070,7 +1091,7 @@ const TicketReminderPanel = (() => {
               <td>${_esc(w.template_id || '—')}</td>
               <td>${w.is_default ? '★' : ''}</td>
               <td style="white-space:nowrap;">
-                <button class="tkr-btn" title="Edit" onclick="TicketReminderPanel.showWebhookForm(${JSON.stringify(w).replace(/"/g, '&quot;')})">✏</button>
+                <button class="tkr-btn" title="Edit" onclick="TicketReminderPanel.showWebhookEditForm(${JSON.stringify(w).replace(/"/g, '&quot;')})">✏</button>
                 <button class="tkr-btn tkr-btn-danger" title="Delete" onclick="TicketReminderPanel.deleteWebhook('${w.id}')">🗑</button>
                 <button class="tkr-btn" title="Test webhook" onclick="TicketReminderPanel.testWebhook('${w.id}')">▶ Test</button>
               </td>
@@ -1079,39 +1100,56 @@ const TicketReminderPanel = (() => {
         </tbody>
       </table>
       <div style="margin-top:12px;">
-        <button class="tkr-btn-primary" onclick="TicketReminderPanel.showWebhookForm(null)">+ Thêm Webhook</button>
+        <button class="tkr-btn-primary" onclick="TicketReminderPanel.showWebhookMultiForm()">+ Thêm Webhook</button>
       </div>
-      <div id="tkr-wh-pending"></div>
-      <div class="tkr-inline-form" id="tkr-webhook-form">
+
+      <!-- Multi-row add form -->
+      <div id="tkr-wh-add-form" style="display:none;margin-top:14px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;">Thêm webhook mới</div>
+        <div style="overflow-x:auto;">
+          <table class="tkr-config-table" style="min-width:700px;">
+            <thead><tr>
+              <th style="min-width:160px;">Product <span style="color:#ef4444;">*</span></th>
+              <th style="min-width:110px;">Channel <span style="color:#ef4444;">*</span></th>
+              <th style="min-width:200px;">Webhook URL <span style="color:#ef4444;">*</span></th>
+              <th style="min-width:120px;">Template</th>
+              <th style="width:60px;">Default</th>
+              <th style="width:40px;"></th>
+            </tr></thead>
+            <tbody id="tkr-wh-rows-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+          <button class="tkr-btn" onclick="TicketReminderPanel.addWebhookRow()">+ Thêm dòng</button>
+          <button class="tkr-btn-primary" id="tkr-wh-save-all-btn" onclick="TicketReminderPanel.saveAllWebhooks()">💾 Lưu tất cả (1)</button>
+          <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookMultiForm()">Hủy</button>
+        </div>
+      </div>
+
+      <!-- Edit form -->
+      <div class="tkr-inline-form" id="tkr-wh-edit-form">
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px;">Chỉnh sửa webhook</div>
         <div class="tkr-form-grid">
           <div class="tkr-field">
-            <label class="tkr-label">Product <span style="color:#ef4444;">*</span></label>
-            <div class="tkr-tag-input" id="tkr-wh-product-wrap">
-              <span id="tkr-wh-product-display" style="font-size:12px;color:var(--text3);flex:1;cursor:pointer;"
-                onclick="TicketReminderPanel.toggleWebhookProductPicker()">— Chọn product —</span>
-              <div class="tkr-picker-wrap">
-                <div class="tkr-picker-panel" id="tkr-wh-product-panel" onclick="event.stopPropagation()">
-                  <input class="tkr-picker-search" id="tkr-wh-product-search" placeholder="🔍 Tìm product..."
-                    oninput="TicketReminderPanel.filterWebhookProducts(this.value)">
-                  <div id="tkr-wh-product-list"></div>
-                </div>
-              </div>
-            </div>
-            <input type="hidden" id="tkr-wh-product-name">
-            <input type="hidden" id="tkr-wh-product-code">
+            <label class="tkr-label">Product Name <span style="color:#ef4444;">*</span></label>
+            <input class="tkr-input" id="tkr-wh-edit-product-name" placeholder="Product name">
           </div>
-          <div class="tkr-field"><label class="tkr-label" for="tkr-wh-channel">Channel Name</label><input class="tkr-input" id="tkr-wh-channel"></div>
-          <div class="tkr-field tkr-field--wide"><label class="tkr-label" for="tkr-wh-url">Webhook URL</label><input class="tkr-input" id="tkr-wh-url" placeholder="https://...webhook.office.com/..."></div>
-          <div class="tkr-field"><label class="tkr-label" for="tkr-wh-template">Template</label><select class="tkr-select" id="tkr-wh-template"><option value="">— None —</option></select></div>
+          <div class="tkr-field">
+            <label class="tkr-label">Product Code</label>
+            <input class="tkr-input" id="tkr-wh-edit-product-code" placeholder="Optional">
+          </div>
+          <div class="tkr-field"><label class="tkr-label" for="tkr-wh-edit-channel">Channel Name</label><input class="tkr-input" id="tkr-wh-edit-channel"></div>
+          <div class="tkr-field tkr-field--wide"><label class="tkr-label" for="tkr-wh-edit-url">Webhook URL</label><input class="tkr-input" id="tkr-wh-edit-url" placeholder="https://...webhook.office.com/..."></div>
+          <div class="tkr-field"><label class="tkr-label" for="tkr-wh-edit-template">Template</label><select class="tkr-select" id="tkr-wh-edit-template"><option value="">— None —</option></select></div>
           <div class="tkr-field" style="justify-content:flex-end;padding-top:18px;">
             <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);cursor:pointer;">
-              <input type="checkbox" id="tkr-wh-default"> Set as Default
+              <input type="checkbox" id="tkr-wh-edit-default"> Set as Default
             </label>
           </div>
         </div>
         <div class="tkr-form-actions">
-          <button class="tkr-btn-primary tkr-save-btn" onclick="TicketReminderPanel.saveWebhook()">+ Thêm vào danh sách</button>
-          <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookForm()">Hủy</button>
+          <button class="tkr-btn-primary tkr-save-btn" onclick="TicketReminderPanel.saveWebhookEdit()">Cập nhật</button>
+          <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookEditForm()">Hủy</button>
         </div>
       </div>
     `;
@@ -1501,11 +1539,12 @@ const TicketReminderPanel = (() => {
       const panel = document.getElementById('tkr-status-panel');
       if (panel) { panel.classList.remove('open'); _statusPickerOpen = false; }
     }
-    const whProductWrap = document.getElementById('tkr-wh-product-wrap');
-    if (whProductWrap && !whProductWrap.contains(e.target)) {
-      const panel = document.getElementById('tkr-wh-product-panel');
-      if (panel) { panel.classList.remove('open'); _webhookProductPickerOpen = false; }
-    }
+    // Close any open row product pickers if click outside their wrap
+    document.querySelectorAll('.tkr-wh-row-product-panel.open').forEach(panel => {
+      const rowId = panel.id.replace('tkr-wh-row-', '').replace('-product-panel', '');
+      const wrap = document.getElementById(`tkr-wh-row-${rowId}-product-wrap`);
+      if (wrap && !wrap.contains(e.target)) panel.classList.remove('open');
+    });
   }
 
   // ── Private: Template select ───────────────────────────────────────────────
@@ -1579,9 +1618,17 @@ const TicketReminderPanel = (() => {
     toggleStatusPickerPanel,
     toggleStatus,
     removeStatusChip,
-    showWebhookForm,
-    hideWebhookForm,
-    saveWebhook,
+    showWebhookMultiForm,
+    hideWebhookMultiForm,
+    addWebhookRow,
+    removeWebhookRow,
+    saveAllWebhooks,
+    showWebhookEditForm,
+    hideWebhookEditForm,
+    saveWebhookEdit,
+    toggleRowProductPicker,
+    filterRowProducts,
+    selectRowProduct,
     deleteWebhook,
     testWebhook,
     showTemplateForm,
@@ -1597,10 +1644,5 @@ const TicketReminderPanel = (() => {
     toggleDebugMode,
     closeDebugDialog,
     goProductsPage,
-    toggleWebhookProductPicker,
-    filterWebhookProducts,
-    selectWebhookProduct,
-    removePendingWebhook,
-    saveAllWebhooks,
   };
 })();

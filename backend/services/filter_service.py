@@ -70,19 +70,19 @@ def format_due_date(due_date_str: str) -> str:
         return due_date_str or ""
 
 
-def _extract_product(ticket: dict) -> tuple[str, str]:
-    """Lấy product id và name từ ticket.
+def _extract_product(ticket: dict) -> tuple[str, str, str]:
+    """Lấy product id, code, name từ ticket.
     API có thể trả về 'product' (object) hoặc 'products' (array).
     """
     # Thử dạng object trước (theo spec mới)
     product = ticket.get("product")
     if product and isinstance(product, dict):
-        return str(product.get("id", "")), product.get("name", "")
+        return str(product.get("id", "")), product.get("code", ""), product.get("name", "")
     # Fallback: dạng array cũ
     products = ticket.get("products") or []
     if products:
-        return str(products[0].get("id", "")), products[0].get("name", "")
-    return "", ""
+        return str(products[0].get("id", "")), products[0].get("code", ""), products[0].get("name", "")
+    return "", "", ""
 
 
 def _extract_last_comment(comments: list) -> dict | None:
@@ -118,7 +118,7 @@ def build_remind_item(
         last_comment_by = (last.get("user") or {}).get("username", "")
         last_comment_is_handler = last_comment_by in handler_usernames
 
-    product_id, product_name = _extract_product(ticket)
+    product_id, product_code, product_name = _extract_product(ticket)
     requester = ticket.get("requester") or {}
     handler = ticket.get("handler") or {}
 
@@ -132,6 +132,7 @@ def build_remind_item(
         "id":           ticket.get("id"),
         "ticket_url":   TICKET_URL_TEMPLATE.format(id=ticket.get("id", "")),
         "product_id":   product_id,
+        "product_code": product_code,
         "product_name": product_name,
         "title":        ticket.get("title", ""),
         "requester_name":  requester.get("name", ""),
