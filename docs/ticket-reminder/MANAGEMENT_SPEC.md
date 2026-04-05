@@ -56,6 +56,7 @@ is_default   : boolean      — fallback khi không match product nào
 | `{due_date}` | due_date_fmt DD/MM/YYYY | `15/04/2024` |
 | `{days_left}` | diff_days (âm nếu quá hạn) | `3` hoặc `-2` |
 | `{time_label}` | computed | `will expire on 15/04/2024` |
+| `{tagged_handler}` | Teams mention hoặc plain name | `<at>Vũ Nguyên Kha</at>` hoặc `Vũ Nguyên Kha` |
 
 ### 2.2 time_label logic
 ```python
@@ -65,20 +66,35 @@ else:
     return f"will expire on {fmt}"
 ```
 
-### 2.3 Template mặc định (seed data)
+### 2.3 tagged_handler logic
+
+```
+Khi send_remind():
+  Nếu handler_id có và fetch_users_by_ids() trả về user_info:
+    tagged_handler = "<at>{fullname}</at>"     → Teams mention (Adaptive Card)
+    mention = { id: email, name: fullname }
+  Else:
+    tagged_handler = assignee_name             → plain text fallback
+    mention = None                             → gửi plain text payload
+```
+
+### 2.4 Template mặc định (seed data)
 
 **Sandbox Expiry EN:**
 ```
 Hi {requester_name}, the sandbox account for {product_name} (ticket #{ticket_id}) {time_label}. Do you need to extend it? If so, please leave a comment on the ticket. Thank you!
+cc: {tagged_handler}
 ```
 
 **Sandbox Expiry VI:**
 ```
 Xin chào {requester_name}, tài khoản sandbox cho {product_name} (ticket #{ticket_id}) {time_label}. Bạn có cần gia hạn tiếp không? Nếu có vui lòng comment vào ticket nhé. Cảm ơn!
+cc: {tagged_handler}
 ```
 
-### 2.4 Preview
+### 2.5 Preview
 `POST /api/remind/templates/{id}/preview` → render với SAMPLE_DATA cố định trong `template_service.py`.
+SAMPLE_DATA bao gồm `tagged_handler: "Jane Smith"` để preview placeholder.
 
 ---
 

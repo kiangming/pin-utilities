@@ -45,9 +45,12 @@ backend/
   routers/remind.py            ← 20+ endpoints /api/remind/*
   services/
     ticket_service.py          ← HMAC auth, fetch tickets/comments/products/services/statuses
+                                  fetch_users_by_ids (plain GET, no auth)
     filter_service.py          ← calc_diff_days, is_need_remind, build_remind_item (pure functions)
-    template_service.py        ← render {placeholder} templates, preview với SAMPLE_DATA
-    teams_service.py           ← send_message, send_test (timeout 10s)
+                                  build_remind_item returns handler_id
+    template_service.py        ← render {placeholder} templates (incl. {tagged_handler}), preview với SAMPLE_DATA
+    teams_service.py           ← send_message, send_test (plain text);
+                                  send_mention_message (Adaptive Card with Teams mention)
     remind_db.py               ← Supabase httpx CRUD (6 tables)
     fetch_job_service.py       ← Background job: fetch tickets + comments, progress polling
 ```
@@ -162,8 +165,15 @@ GET  /api/remind/tickets/fetch/status?job_id=
 ### Remind Send
 ```
 POST /api/remind/send
-     Body: { tickets: [{ id, product_name, requester_name, due_date_fmt, diff_days, time_label, title, ticket_url }] }
+     Body: { tickets: [{ id, product_name, requester_name, assignee_name, handler_id,
+                          due_date_fmt, diff_days, time_label, title, ticket_url }] }
      → { results: [{ ticket_id, status, channel, message, error }], sent, failed, skipped }
+
+Flow:
+  1. Batch lookup: fetch_users_by_ids(unique handler_ids) → user_map
+  2. Per ticket: resolve tagged_handler + mention from user_map
+  3. render(template, {..., tagged_handler}) → message_text
+  4. send_mention_message(url, message_text, mention)
 ```
 
 ### Webhooks CRUD
@@ -248,7 +258,21 @@ Phase "done": _sort_tickets() → need_remind=true trước, sau đó diff_days 
 
 **Lưu ý:** Phase 3 `fetch_ticket_detail()` đã bị bỏ — ticket_url được build client-side từ hardcoded template `https://nexus.vnggames.com/home/tickets-v2/{id}`.
 
-### 5.4 needRemind Logic (`filter_service.py`)
+### 5.4 Users API (nexus.vnggames.com — plain GET)
+
+```
+GET https://nexus.vnggames.com/api/ticket-management/v1/users?limit=5000&ids={id1},{id2},...
+```
+
+- **Không cần HMAC auth** — plain GET, không cần `requestUser`, không cần auth headers
+- `ids`: comma-separated integer IDs (không phải PHP-style `ids[]=`)
+- `limit=5000`: đặt đủ lớn để lấy hết kết quả
+- Response: `{ data: [{ id, username, fullname, email, is_admin }] }`
+- Dùng `email` trực tiếp làm `mention.id` trong Teams mention — không tự build `username@domain`
+- Gọi 1 lần duy nhất per `/api/remind/send` request (batch tất cả handler_ids)
+- Fallback về plain text nếu API lỗi hoặc không tìm thấy user
+
+### 5.5 needRemind Logic (`filter_service.py`)
 ```python
 def is_need_remind(ticket, comments, handler_usernames, threshold):
     diff = calc_diff_days(ticket["due_date"])   # (due_date - today).days
@@ -276,6 +300,7 @@ Mỗi ticket trong job result có các fields:
 | `requester_name` | ticket.requester.name | Tên người tạo |
 | `requester_login` | ticket.requester.login | Login người tạo |
 | `assignee_name` | ticket.handler.name | Tên người xử lý |
+| `handler_id` | ticket.handler.id | ID người xử lý — dùng để batch lookup mention |
 | `created_at` | ticket.created_at | Ngày tạo (ISO) |
 | `status` | ticket.status.name | Trạng thái |
 | `due_date` | ticket.due_date | YYYY-MM-DD |

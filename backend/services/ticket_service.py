@@ -318,6 +318,33 @@ def fetch_statuses(request_user: str, debug_collector: list | None = None) -> tu
         return [], f"Error fetching statuses: {e}"
 
 
+def fetch_users_by_ids(handler_ids: list[int]) -> dict[int, dict]:
+    """
+    Batch lookup handler users bằng Nexus users API.
+    Không cần HMAC auth — plain GET.
+    Trả về dict: { handler_id (int) → { email, fullname } }
+    """
+    if not handler_ids:
+        return {}
+    url = "https://nexus.vnggames.com/api/ticket-management/v1/users"
+    ids_str = ",".join(str(i) for i in handler_ids)
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, params={"limit": 5000, "ids": ids_str})
+        resp.raise_for_status()
+        result: dict[int, dict] = {}
+        for user in resp.json().get("data", []):
+            uid = user.get("id")
+            if uid is not None:
+                result[int(uid)] = {
+                    "email":    user.get("email", ""),
+                    "fullname": user.get("fullname", ""),
+                }
+        return result
+    except Exception:
+        return {}
+
+
 def fetch_services(request_user: str, debug_collector: list | None = None) -> tuple[list, str | None]:
     """GET /services."""
     sig_params = {"requestUser": request_user}

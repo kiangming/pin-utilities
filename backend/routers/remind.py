@@ -41,6 +41,8 @@ class SendTicket(BaseModel):
     id: int
     product_name: str
     requester_name: str
+    assignee_name: str = ""
+    handler_id: int | None = None
     due_date_fmt: str = ""
     diff_days: int | None = None
     time_label: str = ""
@@ -113,6 +115,10 @@ async def send_remind(
     if not req.tickets:
         raise HTTPException(status_code=422, detail="No tickets to remind")
 
+    # Batch user lookup — single API call for all unique handler_ids
+    unique_handler_ids = list({t.handler_id for t in req.tickets if t.handler_id is not None})
+    user_map = ticket_service.fetch_users_by_ids(unique_handler_ids)
+
     # Load template & webhook config once
     templates = {t["id"]: t for t in remind_db.get_templates()}
     results = []
@@ -162,6 +168,15 @@ async def send_remind(
             })
             continue
 
+        # Resolve mention: use user_map if handler_id available
+        user_info = user_map.get(ticket.handler_id) if ticket.handler_id else None
+        if user_info and user_info.get("email") and user_info.get("fullname"):
+            tagged_handler = f"<at>{user_info['fullname']}</at>"
+            mention = {"id": user_info["email"], "name": user_info["fullname"]}
+        else:
+            tagged_handler = ticket.assignee_name or ""
+            mention = None
+
         # Render message
         message = template_service.render(tmpl["content"], {
             "requester_name": ticket.requester_name,
@@ -170,14 +185,14 @@ async def send_remind(
             "due_date": ticket.due_date_fmt,
             "days_left": str(ticket.diff_days) if ticket.diff_days is not None else "",
             "time_label": ticket.time_label,
+            "tagged_handler": tagged_handler,
         })
 
         # Mask webhook URL for display (30 chars)
         url = webhook["webhook_url"]
-        masked_url = url[:30] + "..." if len(url) > 30 else url
 
-        # Send
-        ok, err_msg = teams_service.send_message(url, message)
+        # Send with mention if available, else plain text
+        ok, err_msg = teams_service.send_mention_message(url, message, mention)
 
         if ok:
             sent += 1

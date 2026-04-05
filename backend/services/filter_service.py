@@ -138,6 +138,7 @@ def build_remind_item(
         "requester_name":  requester.get("name", ""),
         "requester_login": requester.get("login", ""),
         "assignee_name":   handler.get("name", ""),
+        "handler_id":      handler.get("id"),
         "created_at":      ticket.get("created_at", ""),
         "status":       (ticket.get("status") or {}).get("name", ""),
         "due_date":     due_date,

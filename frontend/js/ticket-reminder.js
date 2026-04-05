@@ -1192,7 +1192,7 @@ const TicketReminderPanel = (() => {
               placeholder="Hi {requester_name}, ticket #{ticket_id} {time_label}..."></textarea>
           </div>
           <div style="grid-column:span 2;font-size:11px;color:var(--text3);">
-            Placeholders: {requester_name} {product_name} {ticket_id} {due_date} {days_left} {time_label}
+            Placeholders: {requester_name} {product_name} {ticket_id} {due_date} {days_left} {time_label} {tagged_handler}
           </div>
         </div>
         <div class="tkr-form-actions">

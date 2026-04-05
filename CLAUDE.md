@@ -572,6 +572,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.8.1** | **Apr 2026** | **Debug mode: signature trace + request/response log (DEBUG_TICKET_API env var)** |
 | **v4.8.2** | **Apr 2026** | **Ticket table redesign: 10 cột, Assignee/Created/Expire In mới, ticket_url hardcoded, fetch comments mọi ticket, sort need_remind+expire_in** |
 | **v4.8.3** | **Apr 2026** | **Webhook multi-row add form; "Reminded" green badge + row tint khi quay lại từ remind view; Product column format id-[code-name]; fix sig_params comments/detail API** |
+| **v4.8.4** | **Apr 2026** | **Tag handler trong Teams message: `{tagged_handler}` placeholder, Adaptive Card mention, batch user lookup API (plain GET)** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -835,7 +836,7 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ---
 
-## 18. Tool 5: Ticket Reminder — v4.8.3
+## 18. Tool 5: Ticket Reminder — v4.8.4
 
 > Status: **Implemented & Deployed**
 
@@ -860,10 +861,10 @@ Fetch ticket từ Nexus Ticket API, xác định ticket nào cần nhắc (due d
 backend/
   routers/remind.py                ← 22+ endpoints /api/remind/*
   services/
-    ticket_service.py              ← HMAC auth, fetch tickets/comments/products/services/statuses
-    filter_service.py              ← calc_diff_days, is_need_remind, build_remind_item
-    template_service.py            ← render(content, data), preview(content)
-    teams_service.py               ← send_message, send_test
+    ticket_service.py              ← HMAC auth, fetch tickets/comments/products/services/statuses; fetch_users_by_ids (plain GET)
+    filter_service.py              ← calc_diff_days, is_need_remind, build_remind_item (incl. handler_id)
+    template_service.py            ← render(content, data), preview(content); placeholder {tagged_handler}
+    teams_service.py               ← send_message, send_test, send_mention_message (Adaptive Card)
     remind_db.py                   ← Supabase httpx CRUD (7 tables)
     fetch_job_service.py           ← Background job: fetch + analyze tickets
 
@@ -877,6 +878,7 @@ docs/ticket-reminder/
   ARCHITECTURE.md                  ← Tech stack, DB schema, API routes
   UI_SPEC.md                       ← Giao diện, HTML, CSS
   MANAGEMENT_SPEC.md               ← Webhook, template, handler, products, services, statuses config
+  TAGGING_DESIGN.md                ← Design: tag handler trong Teams message (implemented v4.8.4)
 ```
 
 ### 18.3 Supabase tables
@@ -1048,6 +1050,28 @@ RESPONSE 200
 | **AX-32** | Fetch comments cho mọi ticket (không skip) — last comment luôn hiển thị |
 | **AX-33** | "Reminded" badge/row tint client-side only (`_sentTicketIds`) — reset khi fetch mới |
 | **AX-34** | Webhook multi-row form: product picker dùng `rowId` DOM namespace — KHÔNG dùng fixed IDs |
+| **AX-35** | `fetch_users_by_ids()` dùng plain GET — KHÔNG thêm HMAC headers, KHÔNG thêm `requestUser` |
+| **AX-36** | `send_mention_message()` dùng cho remind thực tế; `send_message()` chỉ dùng cho `send_test` — KHÔNG dùng lẫn |
+| **AX-37** | `{tagged_handler}` resolved trước khi gọi `render()` — caller truyền vào đã là `<at>Name</at>` hoặc plain name |
+
+### v4.8.4 chi tiết
+- **Tag handler trong Teams message** — gắn mention `<at>Name</at>` vào remind message
+- **`filter_service.py`**: `build_remind_item()` thêm field `handler_id` từ `ticket["handler"]["id"]`
+- **`ticket_service.py`**: thêm `fetch_users_by_ids(handler_ids: list[int]) → dict[int, dict]`
+  - URL: `https://nexus.vnggames.com/api/ticket-management/v1/users?limit=5000&ids={id1},{id2},...`
+  - Plain GET — không cần HMAC, không cần `requestUser`
+  - `ids` format: comma-separated (không phải PHP-style array)
+  - Map: `handler_id (int) → { email, fullname }` — dùng `email` trực tiếp từ response
+- **`teams_service.py`**: thêm `send_mention_message(url, message_text, mention)`
+  - `mention = { "id": "user@vng.com.vn", "name": "Fullname" }` → gửi Adaptive Card với `msteams.entities`
+  - `mention = None` → fallback plain text `{"text": message_text}`
+  - `send_message` và `send_test` giữ nguyên không thay đổi
+- **`template_service.py`**: thêm `tagged_handler` vào `SAMPLE_DATA` cho preview
+- **`remind.py`**: `SendTicket` model thêm `assignee_name: str` và `handler_id: int | None`
+  - Send endpoint: batch lookup tất cả `handler_id` trước khi loop → `user_map`
+  - Resolve: nếu có `user_info` → `tagged_handler = "<at>Fullname</at>"` + `mention = {...}`; nếu không → plain `assignee_name`, `mention = None`
+  - Gọi `send_mention_message()` thay `send_message()`
+- **Frontend**: `{tagged_handler}` thêm vào hint placeholders trong Templates config UI; payload gửi tự bao gồm `handler_id` và `assignee_name` từ ticket object
 
 ---
 

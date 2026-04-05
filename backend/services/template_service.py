@@ -12,6 +12,7 @@ SAMPLE_DATA = {
     "due_date": "15/04/2026",
     "days_left": "3",
     "time_label": "will expire on 15/04/2026",
+    "tagged_handler": "Jane Smith",
 }
 
 
