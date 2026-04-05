@@ -115,11 +115,15 @@ async def send_remind(
     if not req.tickets:
         raise HTTPException(status_code=422, detail="No tickets to remind")
 
-    # Batch user lookup — single API call for all unique handler_ids
-    unique_handler_ids = list({t.handler_id for t in req.tickets if t.handler_id is not None})
-    print(f"[REMIND DEBUG] unique_handler_ids: {unique_handler_ids}", flush=True)
-    user_map = ticket_service.fetch_users_by_ids(unique_handler_ids)
-    print(f"[REMIND DEBUG] user_map: {user_map}", flush=True)
+    # Build name → username map từ handler_usernames table
+    # full_name.strip().lower() → { username, full_name }
+    handlers = remind_db.get_handlers()
+    handler_name_map = {
+        h["full_name"].strip().lower(): h
+        for h in handlers
+        if h.get("full_name") and h.get("username")
+    }
+    print(f"[REMIND DEBUG] handler_name_map keys: {list(handler_name_map.keys())}", flush=True)
 
     # Load template & webhook config once
     templates = {t["id"]: t for t in remind_db.get_templates()}
@@ -170,15 +174,18 @@ async def send_remind(
             })
             continue
 
-        # Resolve mention: use user_map if handler_id available
-        user_info = user_map.get(ticket.handler_id) if ticket.handler_id else None
-        if user_info and user_info.get("email") and user_info.get("fullname"):
-            tagged_handler = f"<at>{user_info['fullname']}</at>"
-            mention = {"id": user_info["email"], "name": user_info["fullname"]}
+        # Resolve mention: match assignee_name → handler_usernames.full_name → username → email
+        handler_key = (ticket.assignee_name or "").strip().lower()
+        handler_info = handler_name_map.get(handler_key)
+        if handler_info:
+            username = handler_info["username"]
+            fullname = handler_info["full_name"]
+            tagged_handler = f"<at>{fullname}</at>"
+            mention = {"id": f"{username}@vng.com.vn", "name": fullname}
         else:
             tagged_handler = ticket.assignee_name or ""
             mention = None
-        print(f"[REMIND DEBUG] ticket #{ticket.id} handler_id={ticket.handler_id} user_info={user_info} mention={mention}", flush=True)
+        print(f"[REMIND DEBUG] ticket #{ticket.id} assignee={ticket.assignee_name!r} handler_key={handler_key!r} handler_info={handler_info} mention={mention}", flush=True)
 
         # Render message
         message = template_service.render(tmpl["content"], {
