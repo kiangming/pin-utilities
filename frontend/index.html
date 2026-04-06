@@ -453,17 +453,17 @@
     <span class="nav-item-icon">📦</span>
     SDK Versions
   </a>
-  <hr class="nav-section-divider">
-  <div class="left-nav-header">Ticket Tools</div>
-  <a class="nav-item" onclick="selectTool('ticket-fetch', this)" href="#">
+  <hr class="nav-section-divider" id="nav-ticket-divider-top">
+  <div class="left-nav-header" id="nav-ticket-header" style="display:none;">Ticket Tools</div>
+  <a class="nav-item" id="nav-ticket-fetch" onclick="selectTool('ticket-fetch', this)" href="#" style="display:none;">
     <span class="nav-item-icon">🎫</span>
     Ticket Fetch
   </a>
-  <a class="nav-item" onclick="selectTool('remind-config', this)" href="#">
+  <a class="nav-item" id="nav-remind-config" onclick="selectTool('remind-config', this)" href="#" style="display:none;">
     <span class="nav-item-icon">🔔</span>
     Remind Config
   </a>
-  <hr class="nav-section-divider">
+  <hr class="nav-section-divider" id="nav-ticket-divider-bottom" style="display:none;">
 </nav>
 
 <!-- APP CONTENT -->
@@ -1779,6 +1779,15 @@ ApiClient.me().then(user => {
   if (avatar) { avatar.src = user.picture || ''; avatar.style.display = user.picture ? '' : 'none'; }
   if (name)   name.textContent = user.name || user.email;
 });
+
+// Kiểm tra quyền Ticket Tools
+ApiClient.get('/api/remind/access').then(res => {
+  if (!res || !res.allowed) return;
+  document.getElementById('nav-ticket-header').style.display = '';
+  document.getElementById('nav-ticket-fetch').style.display = '';
+  document.getElementById('nav-remind-config').style.display = '';
+  document.getElementById('nav-ticket-divider-bottom').style.display = '';
+}).catch(() => { /* không có quyền hoặc lỗi — giữ ẩn */ });
 
 // Boot pipeline panel khi tab được mở lần đầu
 (function() {

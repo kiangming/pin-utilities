@@ -26,6 +26,22 @@ def _request_user(session: SessionData) -> str:
     return session.user.email.split("@")[0]
 
 
+def _allowed_emails() -> set[str]:
+    """Parse TICKET_TOOL_ALLOWED_EMAILS thành set. Empty string → set rỗng = deny all."""
+    raw = settings.ticket_tool_allowed_emails.strip()
+    if not raw:
+        return set()
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+def require_ticket_access(session: SessionData = Depends(require_session)) -> SessionData:
+    """Dependency: kiểm tra email user có trong allowed list không."""
+    allowed = _allowed_emails()
+    if not allowed or session.user.email.lower() not in allowed:
+        raise HTTPException(status_code=403, detail="Access denied: Ticket Tools not available for your account")
+    return session
+
+
 # ── Models ─────────────────────────────────────────────────────────────────────
 
 class FetchTicketsRequest(BaseModel):
@@ -75,12 +91,21 @@ class HandlerCreateRequest(BaseModel):
     note: str = ""
 
 
+# ── Access Check ──────────────────────────────────────────────────────────────
+
+@router.get("/access")
+async def check_access(session: SessionData = Depends(require_session)):
+    """Kiểm tra user có quyền dùng Ticket Tools không. Không raise 403 — trả về allowed: bool."""
+    allowed = _allowed_emails()
+    return {"allowed": bool(allowed) and session.user.email.lower() in allowed}
+
+
 # ── Ticket Fetch ───────────────────────────────────────────────────────────────
 
 @router.post("/tickets/fetch")
 async def start_fetch(
     req: FetchTicketsRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     filters = {
         "service_ids": [str(s) for s in req.service_ids] if req.service_ids else [],
@@ -97,7 +122,7 @@ async def start_fetch(
 @router.get("/tickets/fetch/status")
 async def fetch_status(
     job_id: str = Query(...),
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     job = fetch_job_service.get_job(job_id)
     if not job:
@@ -110,7 +135,7 @@ async def fetch_status(
 @router.post("/send")
 async def send_remind(
     req: SendRemindRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     if not req.tickets:
         raise HTTPException(status_code=422, detail="No tickets to remind")
@@ -258,7 +283,7 @@ async def get_webhooks(session: SessionData = Depends(require_session)):
 @router.post("/webhooks", status_code=201)
 async def create_webhook(
     req: WebhookCreateRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         return remind_db.create_webhook(req.model_dump(exclude_none=False))
@@ -270,7 +295,7 @@ async def create_webhook(
 async def update_webhook(
     id: str,
     req: WebhookCreateRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         return remind_db.update_webhook(id, req.model_dump(exclude_none=False))
@@ -281,7 +306,7 @@ async def update_webhook(
 @router.delete("/webhooks/{id}", status_code=204)
 async def delete_webhook(
     id: str,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         remind_db.delete_webhook(id)
@@ -292,7 +317,7 @@ async def delete_webhook(
 @router.post("/webhooks/{id}/test")
 async def test_webhook(
     id: str,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     webhooks = remind_db.get_webhooks()
     webhook = next((w for w in webhooks if w["id"] == id), None)
@@ -312,7 +337,7 @@ async def get_templates(session: SessionData = Depends(require_session)):
 @router.post("/templates", status_code=201)
 async def create_template(
     req: TemplateCreateRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         return remind_db.create_template(req.model_dump())
@@ -324,7 +349,7 @@ async def create_template(
 async def update_template(
     id: str,
     req: TemplateCreateRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         return remind_db.update_template(id, req.model_dump())
@@ -335,7 +360,7 @@ async def update_template(
 @router.delete("/templates/{id}", status_code=204)
 async def delete_template(
     id: str,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         remind_db.delete_template(id)
@@ -346,7 +371,7 @@ async def delete_template(
 @router.post("/templates/{id}/preview")
 async def preview_template(
     id: str,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     templates = remind_db.get_templates()
     tmpl = next((t for t in templates if t["id"] == id), None)
@@ -365,7 +390,7 @@ async def get_handlers(session: SessionData = Depends(require_session)):
 @router.post("/handlers", status_code=201)
 async def create_handler(
     req: HandlerCreateRequest,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         return remind_db.create_handler(req.model_dump())
@@ -376,7 +401,7 @@ async def create_handler(
 @router.delete("/handlers/{id}", status_code=204)
 async def delete_handler(
     id: str,
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     try:
         remind_db.delete_handler(id)
@@ -400,7 +425,7 @@ async def sync_products(session: SessionData = Depends(require_session)):
 async def get_products(
     offset: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     return remind_db.get_products(offset=offset, limit=limit)
 
@@ -445,6 +470,6 @@ async def get_statuses(session: SessionData = Depends(require_session)):
 async def get_logs(
     status: str | None = Query(None),
     limit: int = Query(50, le=200),
-    session: SessionData = Depends(require_session),
+    session: SessionData = Depends(require_ticket_access),
 ):
     return remind_db.get_logs(status=status, limit=limit)

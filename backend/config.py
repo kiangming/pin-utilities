@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     ticket_api_client_secret: str = ""
     debug_ticket_api: bool = False
 
+    # Ticket Tools — Access Control (comma-separated emails; empty = deny all)
+    ticket_tool_allowed_emails: str = ""
+
     # Server — Railway inject PORT tự động
     host: str = "0.0.0.0"
     port: int = 8080          # bị override bởi env var PORT trên Railway
