@@ -2,7 +2,7 @@
 /* Load riêng, không conflict với pl-, pls-, sdkv- */
 
 /* ── Layout ── */
-.tkr-panel { display: flex; flex-direction: column; flex: 1; overflow: hidden; padding: 20px 24px 0; }
+.tkr-panel { display: flex; flex-direction: column; flex: 1; overflow: visible; padding: 20px 24px 0; }
 .tkr-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-shrink: 0; }
 .tkr-title  { font-size: 17px; font-weight: 700; color: var(--text); }
 
@@ -291,8 +291,8 @@
 /* ── Result view scrollable area ── */
 .tkr-result-area { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .tkr-remind-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.tkr-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
-.tkr-tab-content { flex: 1; min-height: 0; overflow-y: auto; }
+.tkr-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: visible; }
+.tkr-tab-content { flex: 1; min-height: 0; overflow: visible; }
 
 /* ── Ticket table (full 10-column layout) ── */
 .tkr-table--tickets { table-layout: fixed; min-width: 1240px; }

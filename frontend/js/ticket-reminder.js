@@ -1166,11 +1166,11 @@ const TicketReminderPanel = (() => {
             </tr></thead>
             <tbody id="tkr-wh-rows-body"></tbody>
           </table>
-        </div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
-          <button class="tkr-btn" onclick="TicketReminderPanel.addWebhookRow()">+ Thêm dòng</button>
-          <button class="tkr-btn-primary" id="tkr-wh-save-all-btn" onclick="TicketReminderPanel.saveAllWebhooks()">💾 Lưu tất cả (1)</button>
-          <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookMultiForm()">Hủy</button>
+          <div style="min-width:700px;display:flex;align-items:center;gap:10px;margin-top:10px;">
+            <button class="tkr-btn" onclick="TicketReminderPanel.addWebhookRow()">+ Thêm dòng</button>
+            <button class="tkr-btn-primary" id="tkr-wh-save-all-btn" onclick="TicketReminderPanel.saveAllWebhooks()">💾 Lưu tất cả (1)</button>
+            <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookMultiForm()">Hủy</button>
+          </div>
         </div>
       </div>
 
