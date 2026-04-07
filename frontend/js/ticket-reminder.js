@@ -336,18 +336,75 @@ const TicketReminderPanel = (() => {
     _renderStatusChips();
   }
 
-  // ── Webhook — row-scoped product picker ───────────────────────────────────
+  // ── Webhook — row-scoped product picker (singleton body-level panel) ─────────
+
+  let _activePickerRowId = null;
+
+  function _getOrCreateBodyPanel() {
+    let panel = document.getElementById('tkr-body-product-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'tkr-body-product-panel';
+      panel.className = 'tkr-picker-panel';
+      panel.style.cssText = 'position:fixed;z-index:9990;display:none;';
+      panel.innerHTML = `
+        <input class="tkr-picker-search" id="tkr-body-product-search"
+          placeholder="🔍 Tìm product..."
+          oninput="TicketReminderPanel._onBodyPickerSearch(this.value)">
+        <div id="tkr-body-product-list"></div>
+      `;
+      panel.addEventListener('click', e => e.stopPropagation());
+      document.body.appendChild(panel);
+      document.addEventListener('click', () => _closeBodyPanel(), true);
+    }
+    return panel;
+  }
+
+  function _positionBodyPanel(trigger) {
+    const panel = _getOrCreateBodyPanel();
+    const rect = trigger.getBoundingClientRect();
+    const panelW = 240;
+    const winW = window.innerWidth;
+    let left = rect.left;
+    if (left + panelW > winW - 8) left = winW - panelW - 8;
+    panel.style.left = left + 'px';
+    panel.style.minWidth = Math.max(panelW, rect.width) + 'px';
+    // Mở xuống nếu đủ chỗ, ngược lại mở lên
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const panelH = 270; // approx: search + list max-height 240 + padding
+    if (spaceBelow >= panelH || spaceBelow >= 120) {
+      panel.style.top = (rect.bottom + 4) + 'px';
+      panel.style.bottom = 'auto';
+    } else {
+      panel.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+      panel.style.top = 'auto';
+    }
+  }
+
+  function _closeBodyPanel() {
+    const panel = document.getElementById('tkr-body-product-panel');
+    if (panel) panel.style.display = 'none';
+    _activePickerRowId = null;
+  }
 
   function toggleRowProductPicker(rowId) {
-    const panel = document.getElementById(`tkr-wh-row-${rowId}-product-panel`);
-    if (!panel) return;
-    const isOpen = panel.classList.contains('open');
-    document.querySelectorAll('.tkr-wh-row-product-panel').forEach(p => p.classList.remove('open'));
-    if (!isOpen) {
-      panel.classList.add('open');
-      const search = document.getElementById(`tkr-wh-row-${rowId}-product-search`);
-      if (search) { search.value = ''; _renderRowProductList(rowId, ''); search.focus(); }
+    const trigger = document.getElementById(`tkr-wh-row-${rowId}-product-display`);
+    if (!trigger) return;
+    if (_activePickerRowId === rowId) {
+      _closeBodyPanel();
+      return;
     }
+    _activePickerRowId = rowId;
+    const panel = _getOrCreateBodyPanel();
+    _positionBodyPanel(trigger);
+    panel.style.display = 'block';
+    const search = document.getElementById('tkr-body-product-search');
+    if (search) { search.value = ''; search.focus(); }
+    _renderRowProductList(rowId, '');
+  }
+
+  function _onBodyPickerSearch(q) {
+    if (_activePickerRowId !== null) _renderRowProductList(_activePickerRowId, q);
   }
 
   function filterRowProducts(rowId, q) {
@@ -358,15 +415,14 @@ const TicketReminderPanel = (() => {
     const nameEl = document.getElementById(`tkr-wh-row-${rowId}-product-name`);
     const codeEl = document.getElementById(`tkr-wh-row-${rowId}-product-code`);
     const display = document.getElementById(`tkr-wh-row-${rowId}-product-display`);
-    const panel  = document.getElementById(`tkr-wh-row-${rowId}-product-panel`);
     if (nameEl) nameEl.value = name;
     if (codeEl) codeEl.value = code || '';
     if (display) { display.textContent = name; display.style.color = 'var(--text)'; }
-    if (panel) panel.classList.remove('open');
+    _closeBodyPanel();
   }
 
   function _renderRowProductList(rowId, q) {
-    const list = document.getElementById(`tkr-wh-row-${rowId}-product-list`);
+    const list = document.getElementById('tkr-body-product-list');
     if (!list) return;
     const query = (q || '').toLowerCase();
     const selectedName = (document.getElementById(`tkr-wh-row-${rowId}-product-name`) || {}).value || '';
@@ -427,18 +483,10 @@ const TicketReminderPanel = (() => {
     return `
       <tr id="tkr-wh-row-${rowId}" data-row="${rowId}">
         <td>
-          <div class="tkr-tag-input" id="tkr-wh-row-${rowId}-product-wrap" style="position:relative;min-width:140px;">
+          <div class="tkr-tag-input" style="position:relative;min-width:140px;">
             <span id="tkr-wh-row-${rowId}-product-display"
               class="tkr-picker-trigger" style="flex:1;cursor:pointer;font-size:12px;color:var(--text3);"
               onclick="TicketReminderPanel.toggleRowProductPicker(${rowId})">— Chọn —</span>
-            <div class="tkr-picker-wrap">
-              <div class="tkr-picker-panel tkr-wh-row-product-panel" id="tkr-wh-row-${rowId}-product-panel" onclick="event.stopPropagation()">
-                <input class="tkr-picker-search" id="tkr-wh-row-${rowId}-product-search"
-                  placeholder="🔍 Tìm product..."
-                  oninput="TicketReminderPanel.filterRowProducts(${rowId}, this.value)">
-                <div id="tkr-wh-row-${rowId}-product-list"></div>
-              </div>
-            </div>
             <input type="hidden" id="tkr-wh-row-${rowId}-product-name">
             <input type="hidden" id="tkr-wh-row-${rowId}-product-code">
           </div>
@@ -1629,6 +1677,7 @@ const TicketReminderPanel = (() => {
     toggleRowProductPicker,
     filterRowProducts,
     selectRowProduct,
+    _onBodyPickerSearch,
     deleteWebhook,
     testWebhook,
     showTemplateForm,
