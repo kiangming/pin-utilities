@@ -2,7 +2,7 @@
 /* Load riêng, không conflict với pl-, pls-, sdkv- */
 
 /* ── Layout ── */
-.tkr-panel { display: flex; flex-direction: column; flex: 1; overflow: visible; padding: 20px 24px 0; }
+.tkr-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: visible; padding: 20px 24px 0; }
 .tkr-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-shrink: 0; }
 .tkr-title  { font-size: 17px; font-weight: 700; color: var(--text); }
 
