@@ -30,6 +30,14 @@ const PipelineStats = (() => {
     return d.toLocaleDateString('vi-VN', { day:'2-digit', month:'short', year:'numeric' });
   }
 
+  function _fmtDdMmYyyy(iso) {
+    const d = _parseDate(iso);
+    if (!d) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${d.getFullYear()}`;
+  }
+
   function _daysFromNow(iso) {
     const d = _parseDate(iso);
     if (!d) return null;
@@ -168,6 +176,7 @@ const PipelineStats = (() => {
           <span class="pls-alert-game">${esc(ev.game.name)}</span>
           <span class="pls-alert-evtype">${ev.type}</span>
           <span class="pls-alert-days">${ev.days === 0 ? 'Hôm nay!' : ev.days + ' ngày'}</span>
+          <span class="pls-alert-date">(${_fmtDdMmYyyy(ev.dateIso)})</span>
         </div>`).join('');
       const more = items.length > 5 ? `<div class="pls-alert-more">+${items.length - 5} more…</div>` : '';
       return `<div class="pls-alert-card ${cssClass}">
