@@ -15,6 +15,7 @@ SAMPLE_DATA = {
     "time_label":       "will expire on 15/04/2026",
     "tagged_handler":   "<at>Jane Smith</at>",
     "tagged_commenter": "<at>Châu Quốc Hưng</at>",
+    "tagged_requester": "<at>John Doe</at>",
 }
 
 

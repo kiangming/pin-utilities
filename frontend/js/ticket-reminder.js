@@ -229,6 +229,7 @@ const TicketReminderPanel = (() => {
       ticket_url:            t.ticket_url || null,
       last_comment_username: t.last_comment_by || "",
       last_comment_name:     (t.last_comment && t.last_comment.name) || "",
+      requester_login:       t.requester_login || "",
     }));
     ApiClient.post('/api/remind/send', { tickets: payload }).then(res => {
       res.results.forEach(r => {
@@ -1254,7 +1255,7 @@ const TicketReminderPanel = (() => {
               placeholder="Hi {requester_name}, ticket #{ticket_id} {time_label}..."></textarea>
           </div>
           <div style="grid-column:span 2;font-size:11px;color:var(--text3);">
-            Placeholders: {requester_name} {product_name} {ticket_id} {ticket_link} {due_date} {days_left} {time_label} {tagged_handler} {tagged_commenter}
+            Placeholders: {requester_name} {product_name} {ticket_id} {ticket_link} {due_date} {days_left} {time_label} {tagged_handler} {tagged_commenter} {tagged_requester}
           </div>
         </div>
         <div class="tkr-form-actions">

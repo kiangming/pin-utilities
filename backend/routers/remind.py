@@ -66,6 +66,7 @@ class SendTicket(BaseModel):
     ticket_url: str | None = None
     last_comment_username: str = ""   # username của last commenter → dùng để tag
     last_comment_name: str = ""       # display name của last commenter
+    requester_login: str = ""         # login (username) của requester → dùng để tag
 
 
 class SendRemindRequest(BaseModel):
@@ -224,6 +225,14 @@ async def send_remind(
             commenter_mention = None
         print(f"[REMIND DEBUG] ticket #{ticket.id} lc_username={ticket.last_comment_username!r} lc_name={ticket.last_comment_name!r} commenter_mention={commenter_mention}", flush=True)
 
+        # Resolve requester mention
+        if ticket.requester_login:
+            tagged_requester = f"<at>{ticket.requester_name}</at>"
+            requester_mention = {"id": f"{ticket.requester_login}@vng.com.vn", "name": ticket.requester_name}
+        else:
+            tagged_requester = ticket.requester_name or ""
+            requester_mention = None
+
         # Build ticket hyperlink
         ticket_link = f"[#{ticket.id}]({ticket.ticket_url})" if ticket.ticket_url else f"#{ticket.id}"
 
@@ -238,12 +247,13 @@ async def send_remind(
             "time_label":       ticket.time_label,
             "tagged_handler":   tagged_handler,
             "tagged_commenter": tagged_commenter,
+            "tagged_requester": tagged_requester,
         })
 
         url = webhook["webhook_url"]
 
-        # Build mentions list (0–2 entries)
-        mentions = [m for m in [handler_mention, commenter_mention] if m]
+        # Build mentions list (0–3 entries)
+        mentions = [m for m in [handler_mention, commenter_mention, requester_mention] if m]
 
         # Send with mentions if available, else plain text
         ok, err_msg = teams_service.send_mention_message(url, message, mentions)
