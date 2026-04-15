@@ -216,7 +216,21 @@ const TicketReminderPanel = (() => {
     const log = document.getElementById('tkr-send-log');
     if (log) { log.innerHTML = ''; log.classList.add('visible'); }
 
-    ApiClient.post('/api/remind/send', { tickets }).then(res => {
+    const payload = tickets.map(t => ({
+      id:                    t.id,
+      product_name:          t.product_name,
+      requester_name:        t.requester_name,
+      assignee_name:         t.assignee_name || "",
+      handler_id:            t.handler_id || null,
+      due_date_fmt:          t.due_date_fmt || "",
+      diff_days:             t.diff_days,
+      time_label:            t.time_label || "",
+      title:                 t.title || "",
+      ticket_url:            t.ticket_url || null,
+      last_comment_username: t.last_comment_by || "",
+      last_comment_name:     (t.last_comment && t.last_comment.name) || "",
+    }));
+    ApiClient.post('/api/remind/send', { tickets: payload }).then(res => {
       res.results.forEach(r => {
         _sentTicketIds.add(r.ticket_id);
         _appendLog(r);
@@ -1240,7 +1254,7 @@ const TicketReminderPanel = (() => {
               placeholder="Hi {requester_name}, ticket #{ticket_id} {time_label}..."></textarea>
           </div>
           <div style="grid-column:span 2;font-size:11px;color:var(--text3);">
-            Placeholders: {requester_name} {product_name} {ticket_id} {due_date} {days_left} {time_label} {tagged_handler}
+            Placeholders: {requester_name} {product_name} {ticket_id} {ticket_link} {due_date} {days_left} {time_label} {tagged_handler} {tagged_commenter}
           </div>
         </div>
         <div class="tkr-form-actions">

@@ -6,13 +6,15 @@ Placeholders: {requester_name}, {product_name}, {ticket_id},
 from __future__ import annotations
 
 SAMPLE_DATA = {
-    "requester_name": "John Doe",
-    "product_name": "GameA",
-    "ticket_id": "9999",
-    "due_date": "15/04/2026",
-    "days_left": "3",
-    "time_label": "will expire on 15/04/2026",
-    "tagged_handler": "Jane Smith",
+    "requester_name":   "John Doe",
+    "product_name":     "GameA",
+    "ticket_id":        "9999",
+    "ticket_link":      "[#9999](https://nexus.vnggames.com/home/tickets-v2/9999)",
+    "due_date":         "15/04/2026",
+    "days_left":        "3",
+    "time_label":       "will expire on 15/04/2026",
+    "tagged_handler":   "<at>Jane Smith</at>",
+    "tagged_commenter": "<at>Châu Quốc Hưng</at>",
 }
 
 

@@ -33,22 +33,22 @@ def send_message(webhook_url: str, message: str) -> tuple[bool, str | None]:
 def send_mention_message(
     webhook_url: str,
     message_text: str,
-    mention: dict | None,
+    mentions: list[dict],
 ) -> tuple[bool, str | None]:
     """
-    Gửi Adaptive Card với Teams mention nếu mention được cung cấp.
-    mention = { "id": "user@vng.com.vn", "name": "Fullname" }
-    Fallback về plain text khi mention=None.
+    Gửi Adaptive Card với Teams mentions nếu có.
+    mentions = [{ "id": "user@vng.com.vn", "name": "Fullname" }, ...]
+    Fallback về plain text khi mentions rỗng.
     """
-    if mention:
-        mention_entity = {
-            "type": "mention",
-            "text": f"<at>{mention['name']}</at>",
-            "mentioned": {
-                "id": mention["id"],
-                "name": mention["name"],
-            },
-        }
+    if mentions:
+        entities = [
+            {
+                "type": "mention",
+                "text": f"<at>{m['name']}</at>",
+                "mentioned": {"id": m["id"], "name": m["name"]},
+            }
+            for m in mentions
+        ]
         payload = {
             "type": "message",
             "attachments": [{
@@ -58,7 +58,7 @@ def send_mention_message(
                     "type": "AdaptiveCard",
                     "version": "1.2",
                     "body": [{"type": "TextBlock", "text": message_text, "wrap": True}],
-                    "msteams": {"entities": [mention_entity]},
+                    "msteams": {"entities": entities},
                 },
             }],
         }

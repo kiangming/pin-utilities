@@ -64,6 +64,8 @@ class SendTicket(BaseModel):
     time_label: str = ""
     title: str = ""
     ticket_url: str | None = None
+    last_comment_username: str = ""   # username của last commenter → dùng để tag
+    last_comment_name: str = ""       # display name của last commenter
 
 
 class SendRemindRequest(BaseModel):
@@ -199,35 +201,52 @@ async def send_remind(
             })
             continue
 
-        # Resolve mention: match assignee_name → handler_usernames.full_name → username → email
+        # Resolve handler mention: match assignee_name → handler_usernames.full_name → username → email
         handler_key = (ticket.assignee_name or "").strip().lower()
         handler_info = handler_name_map.get(handler_key)
         if handler_info:
             username = handler_info["username"]
             fullname = handler_info["full_name"]
             tagged_handler = f"<at>{fullname}</at>"
-            mention = {"id": f"{username}@vng.com.vn", "name": fullname}
+            handler_mention = {"id": f"{username}@vng.com.vn", "name": fullname}
         else:
             tagged_handler = ticket.assignee_name or ""
-            mention = None
-        print(f"[REMIND DEBUG] ticket #{ticket.id} assignee={ticket.assignee_name!r} handler_key={handler_key!r} handler_info={handler_info} mention={mention}", flush=True)
+            handler_mention = None
+        print(f"[REMIND DEBUG] ticket #{ticket.id} assignee={ticket.assignee_name!r} handler_key={handler_key!r} handler_info={handler_info} handler_mention={handler_mention}", flush=True)
+
+        # Resolve last commenter mention: từ last_comment_username/last_comment_name
+        if ticket.last_comment_username:
+            lc_name = ticket.last_comment_name or ticket.last_comment_username
+            tagged_commenter = f"<at>{lc_name}</at>"
+            commenter_mention = {"id": f"{ticket.last_comment_username}@vng.com.vn", "name": lc_name}
+        else:
+            tagged_commenter = ""
+            commenter_mention = None
+        print(f"[REMIND DEBUG] ticket #{ticket.id} lc_username={ticket.last_comment_username!r} lc_name={ticket.last_comment_name!r} commenter_mention={commenter_mention}", flush=True)
+
+        # Build ticket hyperlink
+        ticket_link = f"[#{ticket.id}]({ticket.ticket_url})" if ticket.ticket_url else f"#{ticket.id}"
 
         # Render message
         message = template_service.render(tmpl["content"], {
-            "requester_name": ticket.requester_name,
-            "product_name": ticket.product_name,
-            "ticket_id": str(ticket.id),
-            "due_date": ticket.due_date_fmt,
-            "days_left": str(ticket.diff_days) if ticket.diff_days is not None else "",
-            "time_label": ticket.time_label,
-            "tagged_handler": tagged_handler,
+            "requester_name":   ticket.requester_name,
+            "product_name":     ticket.product_name,
+            "ticket_id":        str(ticket.id),
+            "ticket_link":      ticket_link,
+            "due_date":         ticket.due_date_fmt,
+            "days_left":        str(ticket.diff_days) if ticket.diff_days is not None else "",
+            "time_label":       ticket.time_label,
+            "tagged_handler":   tagged_handler,
+            "tagged_commenter": tagged_commenter,
         })
 
-        # Mask webhook URL for display (30 chars)
         url = webhook["webhook_url"]
 
-        # Send with mention if available, else plain text
-        ok, err_msg = teams_service.send_mention_message(url, message, mention)
+        # Build mentions list (0–2 entries)
+        mentions = [m for m in [handler_mention, commenter_mention] if m]
+
+        # Send with mentions if available, else plain text
+        ok, err_msg = teams_service.send_mention_message(url, message, mentions)
 
         if ok:
             sent += 1
