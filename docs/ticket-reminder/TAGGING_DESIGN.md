@@ -22,121 +22,92 @@ cc: Vũ Nguyên Kha
 
 ---
 
-## 2. User Lookup API
+## 2. Handler Mention Resolution
 
-### 2.1 Endpoint
+### 2.1 Vấn đề API unreachable
+
+`nexus.vnggames.com/api/ticket-management/v1/users` là internal API, **không thể gọi từ Railway** (cloud environment). API đã được thiết kế nhưng bị blocked bởi network policy.
+
+### 2.2 Giải pháp thay thế: handler_usernames table matching
+
+Thay vì gọi users API, resolve mention bằng cách lookup bảng `handler_usernames` trong Supabase theo `full_name`:
+
 ```
-GET https://nexus.vnggames.com/api/ticket-management/v1/users?limit=5000&ids={id1},{id2},...
-```
-
-- **Không cần HMAC headers** — plain GET, không cần `requestUser`, không cần `client-id`/`timestamp`/`signature`
-- `ids`: comma-separated, ví dụ `ids=12,138,456`
-- `limit=5000`: bắt buộc để lấy đủ kết quả
-
-### 2.2 Response
-```json
-{
-  "data": [
-    {
-      "id": 12,
-      "username": "khavn",
-      "fullname": "Vũ Nguyên Kha",
-      "email": "khavn@vng.com.vn",
-      "is_admin": 0
-    }
-  ]
-}
+ticket.assignee_name (full_name)
+    ↓ normalize: .strip().lower()
+handler_usernames.full_name (case-insensitive match)
+    ↓ nếu match
+handler_usernames.username → "{username}@vng.com.vn" = mention.id
+handler_usernames.full_name = mention.name
 ```
 
 ### 2.3 Mapping
 | Field dùng | Source | Dùng để |
 |---|---|---|
-| `mention.id` | `data[i].email` | Teams mention target (e.g. `khavn@vng.com.vn`) |
-| `mention.name` | `data[i].fullname` | Tên hiển thị trong `<at>` tag |
-| fallback text | `data[i].fullname` | Plain text khi không có mention |
+| `mention.id` | `"{username}@vng.com.vn"` | Teams mention target |
+| `mention.name` | `handler_usernames.full_name` | Tên hiển thị trong `<at>` tag |
+| fallback text | `ticket.assignee_name` | Plain text khi không match |
 
-Dùng `email` trực tiếp thay vì tự build `username@vng.com.vn` — chính xác hơn vì domain có thể khác nhau.
+### 2.4 Điều kiện để tag thành công
+- Handler đã được thêm vào bảng `handler_usernames` (tab Handlers trong Config)
+- `full_name` trong DB phải khớp với `assignee_name` từ ticket (case-insensitive)
+- `username` phải điền đúng (dùng để build `username@vng.com.vn`)
+
+### 2.5 Users API (thiết kế gốc — hiện không dùng)
+
+API đã thiết kế nhưng không khả dụng từ Railway:
+```
+GET https://nexus.vnggames.com/api/ticket-management/v1/users?limit=5000&ids={id1},{id2},...
+```
+Code `fetch_users_by_ids()` trong `ticket_service.py` vẫn tồn tại nhưng không được gọi trong implementation hiện tại.
 
 ---
 
-## 3. Data Flow — handler_id
+## 3. Data Flow
 
-### 3.1 Vấn đề hiện tại
-`ticket.handler.id` có trong raw ticket data từ Nexus API nhưng **không** được đưa qua:
-- `build_remind_item()` → `filter_service.py`
-- `SendTicket` Pydantic model → `remind.py`
-- Frontend → send endpoint
-
-### 3.2 Giải pháp: thêm `handler_id` vào chain
+### 3.1 Chain từ raw ticket đến mention
 
 ```
 Raw ticket (Nexus API)
-  ticket["handler"]["id"]          ← có sẵn
+  ticket["handler"]["id"]       ← handler_id, vẫn lưu nhưng không dùng để lookup
+  ticket["handler"]["name"]     ← assignee_name
       ↓
 build_remind_item() — filter_service.py
-  thêm field: handler_id = ticket.get("handler", {}).get("id")
+  fields: assignee_name, handler_id (optional)
       ↓
 Job result ticket dict
   { ..., handler_id: 11, assignee_name: "Tran Van B", ... }
       ↓
 SendTicket Pydantic model — remind.py
-  thêm field: handler_id: Optional[int] = None
+  fields: assignee_name: str, handler_id: int | None
       ↓
 POST /api/remind/send
-  body tickets[] chứa handler_id
-      ↓
-send endpoint — thu thập unique handler_ids → batch user lookup
+  1. Load tất cả handlers từ DB (1 lần)
+  2. Build handler_name_map: full_name.lower() → { username, full_name }
+  3. Per ticket: lookup assignee_name.lower() trong map
+  4. Nếu match → build mention; nếu không → plain text fallback
 ```
 
----
-
-## 4. User Lookup — Batch + In-request Cache
-
-### 4.1 Vị trí gọi
-Gọi **một lần duy nhất** tại đầu `POST /api/remind/send`, trước khi loop gửi tickets.
-
-### 4.2 Flow
+### 3.2 Implementation trong remind.py
 ```python
-# 1. Thu thập unique handler_ids (bỏ None)
-handler_ids = list({t.handler_id for t in req.tickets if t.handler_id})
+handlers = remind_db.get_handlers()
+handler_name_map = {
+    h["full_name"].strip().lower(): h
+    for h in handlers
+    if h.get("full_name") and h.get("username")
+}
 
-# 2. Batch lookup (1 API call cho tất cả)
-if handler_ids:
-    user_map = await fetch_users_by_ids(handler_ids)
-    # user_map: { handler_id (int) → { "email": ..., "fullname": ... } }
+# Per ticket:
+handler_key = (ticket.assignee_name or "").strip().lower()
+handler_info = handler_name_map.get(handler_key)
+if handler_info:
+    username = handler_info["username"]
+    fullname = handler_info["full_name"]
+    tagged_handler = f"<at>{fullname}</at>"
+    mention = {"id": f"{username}@vng.com.vn", "name": fullname}
 else:
-    user_map = {}
-
-# 3. Loop gửi — mỗi ticket resolve từ user_map
-for ticket in req.tickets:
-    user_info = user_map.get(ticket.handler_id)  # None nếu không có
-    ...
-```
-
-### 4.3 Không cần persistent cache
-- Gửi remind xảy ra 1 lần per batch → in-request dict là đủ
-- Không cần Redis/file cache giữa các request
-- Mỗi `POST /api/remind/send` chỉ có 1 batch lookup dù có bao nhiêu tickets
-
-### 4.4 Hàm mới trong ticket_service.py
-```python
-async def fetch_users_by_ids(handler_ids: list[int]) -> dict[int, dict]:
-    """
-    Gọi Nexus users API — không cần HMAC auth.
-    Trả về dict: { handler_id → { email, fullname } }
-    """
-    url = f"https://nexus.vnggames.com/api/ticket-management/v1/users"
-    ids_str = ",".join(str(i) for i in handler_ids)
-    params = {"limit": 5000, "ids": ids_str}
-    # Plain GET — không có headers đặc biệt
-    resp = await client.get(url, params=params, timeout=10)
-    result = {}
-    for user in resp.json().get("data", []):
-        result[user["id"]] = {
-            "email": user.get("email", ""),
-            "fullname": user.get("fullname", ""),
-        }
-    return result
+    tagged_handler = ticket.assignee_name or ""
+    mention = None
 ```
 
 ---
@@ -162,9 +133,18 @@ Khi không có mention (fallback):
 
 `render()` nhận thêm arg `tagged_handler_text: str` — caller truyền vào đã resolved.
 
-### 5.3 Template mẫu (seed data cần update)
+### 5.3 Tất cả placeholders tag
+
+| Placeholder | Source username | Source name | Fallback |
+|---|---|---|---|
+| `{tagged_handler}` | `handler_usernames` DB (lookup by `assignee_name`) | DB `full_name` | `assignee_name` plain text |
+| `{tagged_commenter}` | `last_comment.user.username` từ comments API | `last_comment.user.name` | `""` rỗng |
+| `{tagged_requester}` | `ticket.requester.login` | `ticket.requester.name` | `requester_name` plain text |
+
+### 5.4 Template mẫu gợi ý
 ```
-Hi {requester_name}, the sandbox account for {product_name} (ticket #{ticket_id}) {time_label}. Do you need to extend it? If so, please leave a comment on the ticket. Thank you!
+Hi {tagged_requester}, ticket {ticket_link} ({product_name}) {time_label}.
+{tagged_commenter} please check and respond.
 cc: {tagged_handler}
 ```
 
@@ -174,32 +154,24 @@ cc: {tagged_handler}
 
 ### 6.1 Hai hàm riêng biệt (không upgrade send_message)
 - `send_message(url, message)` — giữ nguyên (plain text), dùng cho `send_test`
-- `send_mention_message(url, message_text, mention)` — hàm mới cho remind thực tế
+- `send_mention_message(url, message_text, mentions)` — Adaptive Card, dùng cho remind
 
-Lý do giữ tách biệt:
-- `send_test` không cần tag người
-- Tránh breaking change cho test flow
-- Adaptive Card có format khác hoàn toàn với plain text payload
-
-### 6.2 Adaptive Card payload
+### 6.2 Adaptive Card payload (multiple mentions)
 ```python
-def send_mention_message(url: str, message_text: str, mention: dict | None) -> tuple[bool, str | None]:
+def send_mention_message(url: str, message_text: str, mentions: list[dict]) -> tuple[bool, str | None]:
     """
-    mention = None  → gửi plain text (fallback)
-    mention = {
-        "id": "khavn@vng.com.vn",
-        "name": "Vũ Nguyên Kha"
-    }
+    mentions = []  → fallback plain text
+    mentions = [{ "id": "user@vng.com.vn", "name": "Name" }, ...]
     """
-    if mention:
-        mention_entity = {
-            "type": "mention",
-            "text": f"<at>{mention['name']}</at>",
-            "mentioned": {
-                "id": mention["id"],
-                "name": mention["name"]
+    if mentions:
+        entities = [
+            {
+                "type": "mention",
+                "text": f"<at>{m['name']}</at>",
+                "mentioned": {"id": m["id"], "name": m["name"]},
             }
-        }
+            for m in mentions
+        ]
         payload = {
             "type": "message",
             "attachments": [{
@@ -207,17 +179,14 @@ def send_mention_message(url: str, message_text: str, mention: dict | None) -> t
                 "content": {
                     "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                     "type": "AdaptiveCard",
-                    "version": "1.0",
+                    "version": "1.2",
                     "body": [{"type": "TextBlock", "text": message_text, "wrap": True}],
-                    "msteams": {"entities": [mention_entity]}
+                    "msteams": {"entities": entities},  # ← list, hỗ trợ 0–3 mentions
                 }
             }]
         }
     else:
-        # Fallback: plain text
         payload = {"text": message_text}
-    # POST payload to url, timeout=10s
-    ...
 ```
 
 ---
@@ -227,26 +196,22 @@ def send_mention_message(url: str, message_text: str, mention: dict | None) -> t
 ### 7.1 Flow đầy đủ
 ```
 POST /api/remind/send
-  Body: { tickets: [SendTicket] }  ← SendTicket bây giờ có handler_id
+  Body: { tickets: [SendTicket] }  ← gồm last_comment_username, last_comment_name, requester_login
 
-1. Thu thập unique handler_ids → batch fetch_users_by_ids()
-   → user_map: { id → { email, fullname } }
+1. Load handler_name_map từ DB (1 lần)
+   map: full_name.lower() → { username, full_name }
 
 2. Loop mỗi ticket:
    a. find_webhook_for_product(product_name)
-      → nếu không có → status=skipped, tiếp tục
-   b. Resolve user_info = user_map.get(handler_id)
-   c. Build tagged_handler_text:
-        nếu user_info → "<at>{fullname}</at>"
-        nếu không     → assignee_name (từ ticket)
-   d. render(template_content, {..., tagged_handler: tagged_handler_text})
-      → message_text
-   e. Build mention dict:
-        nếu user_info → { id: email, name: fullname }
-        nếu không     → None
-   f. send_mention_message(webhook_url, message_text, mention)
-      → (ok, error)
-   g. create_log(...)
+      → nếu không có → status=skipped
+   b. Resolve handler_mention: assignee_name → handler_name_map
+   c. Resolve commenter_mention: last_comment_username + last_comment_name
+   d. Resolve requester_mention: requester_login + requester_name
+   e. Build ticket_link: "[#id](ticket_url)"
+   f. render(template, {..., tagged_handler, tagged_commenter, tagged_requester, ticket_link})
+   g. mentions = [m for m in [handler_mention, commenter_mention, requester_mention] if m]
+   h. send_mention_message(webhook_url, message_text, mentions)
+   i. create_log(...)
 
 3. Return results[]
 ```
@@ -255,10 +220,11 @@ POST /api/remind/send
 
 | Bước | Failure | Fallback |
 |---|---|---|
-| fetch_users_by_ids() | API lỗi / timeout | `user_map = {}` → toàn bộ tickets dùng plain text |
-| user_map.get(handler_id) | ID không trong response | `None` → dùng `assignee_name` làm fallback text |
-| handler_id is None | Frontend không gửi | `None` → plain text, không tag |
-| send_mention_message() | mention=None | gửi `{"text": message_text}` plain |
+| handler_name_map lookup | full_name không khớp | plain text `assignee_name`, không tag |
+| last_comment_username rỗng | không có last comment | `tagged_commenter = ""` |
+| requester_login rỗng | API không trả về login | plain text `requester_name` |
+| mentions rỗng | không resolve được user nào | gửi `{"text": message_text}` plain |
+| Webhook không tìm thấy | product chưa cấu hình | status=skipped, ghi log |
 
 ---
 
@@ -266,12 +232,12 @@ POST /api/remind/send
 
 | File | Thay đổi |
 |---|---|
-| `filter_service.py` | `build_remind_item()`: thêm `handler_id` field |
-| `ticket_service.py` | Thêm `fetch_users_by_ids(ids)` — plain GET, không HMAC |
-| `teams_service.py` | Thêm `send_mention_message(url, text, mention)` — giữ `send_message` |
-| `template_service.py` | `render()` nhận `tagged_handler` param (đã resolved trước khi gọi) |
-| `remind.py` | `SendTicket` model thêm `handler_id: Optional[int]`; send endpoint: batch lookup + mention build |
-| `frontend/ticket-reminder.js` | `SendTicket` payload thêm `handler_id` |
+| `filter_service.py` | `build_remind_item()`: thêm `handler_id`, `assignee_name`, `requester_login` fields |
+| `ticket_service.py` | Giữ `fetch_users_by_ids()` (không gọi trong flow hiện tại) |
+| `teams_service.py` | `send_mention_message`: đổi `mention: dict\|None` → `mentions: list[dict]`; build `entities` array |
+| `template_service.py` | SAMPLE_DATA: thêm `ticket_link`, `tagged_commenter`, `tagged_requester` |
+| `remind.py` | `SendTicket` thêm `last_comment_username`, `last_comment_name`, `requester_login`; resolve 3 mentions; render 3 placeholders mới |
+| `frontend/ticket-reminder.js` | SendTicket payload thêm 3 fields; template hint cập nhật đủ 9 placeholders |
 
 ---
 
@@ -279,9 +245,14 @@ POST /api/remind/send
 
 | # | Quyết định | Lý do |
 |---|---|---|
-| D1 | Dùng `email` từ API thay vì build `username@vng.com.vn` | Email trực tiếp, chính xác hơn, không giả định domain |
-| D2 | Batch lookup 1 lần đầu send endpoint | Tránh N API calls; users API nhanh, không cần persistent cache |
+| D1 | Dùng `handler_usernames` table thay vì users API | nexus.vnggames.com không accessible từ Railway — internal network policy |
+| D2 | Match theo `full_name` (không phải `handler_id`) | handler_id không dùng được; full_name là thông tin đã có ở cả ticket và DB |
 | D3 | Giữ `send_message` riêng, thêm `send_mention_message` mới | Không break test flow; plain text và Adaptive Card là 2 format khác nhau |
-| D4 | `tagged_handler_text` resolved trước khi gọi `render()` | template_service không cần biết về mention; render() vẫn pure function |
-| D5 | Fallback về plain text khi không có user_info | UX tốt hơn so với skip/fail — message vẫn gửi được |
-| D6 | Users API không cần HMAC — plain GET | Confirmed: endpoint public, không cần auth headers |
+| D4 | `tagged_handler` resolved trước khi gọi `render()` | template_service không cần biết về mention; render() vẫn pure function |
+| D5 | Fallback về plain text khi không match | UX tốt hơn so với skip/fail — message vẫn gửi được, chỉ thiếu tag |
+| D6 | Build mention.id = `{username}@vng.com.vn` | Domain VNG thống nhất; username lưu trong DB do admin nhập thủ công |
+| D7 | Adaptive Card version 1.2 (không phải 1.0) | 1.2 hỗ trợ đầy đủ Teams mention; 1.0 có thể không render `msteams.entities` |
+| D8 | `send_mention_message` nhận `list[dict]` thay vì `dict\|None` | Hỗ trợ nhiều mention trong 1 message; `entities` là array trong spec Adaptive Card |
+| D9 | `{tagged_commenter}` lấy từ last_comment.user.username | Data đã có trong job result, không cần API call thêm |
+| D10 | `{tagged_requester}` lấy từ ticket.requester.login | Có sẵn trong raw ticket data; login = VNG username = `login@vng.com.vn` |
+| D11 | `{ticket_link}` dùng Markdown `[#id](url)` | Teams Adaptive Card TextBlock hỗ trợ Markdown link natively |

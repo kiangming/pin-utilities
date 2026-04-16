@@ -572,7 +572,8 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.8.1** | **Apr 2026** | **Debug mode: signature trace + request/response log (DEBUG_TICKET_API env var)** |
 | **v4.8.2** | **Apr 2026** | **Ticket table redesign: 10 cột, Assignee/Created/Expire In mới, ticket_url hardcoded, fetch comments mọi ticket, sort need_remind+expire_in** |
 | **v4.8.3** | **Apr 2026** | **Webhook multi-row add form; "Reminded" green badge + row tint khi quay lại từ remind view; Product column format id-[code-name]; fix sig_params comments/detail API** |
-| **v4.8.4** | **Apr 2026** | **Tag handler trong Teams message: `{tagged_handler}` placeholder, Adaptive Card mention, batch user lookup API (plain GET)** |
+| **v4.8.4** | **Apr 2026** | **Tag handler trong Teams message: `{tagged_handler}` placeholder, Adaptive Card mention, handler_usernames name-matching** |
+| **v4.8.5** | **Apr 2026** | **Thêm `{tagged_commenter}`, `{tagged_requester}`, `{ticket_link}` placeholders; send_mention_message nhận list[dict] hỗ trợ multi-mention** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -836,7 +837,7 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ---
 
-## 18. Tool 5: Ticket Reminder — v4.8.4
+## 18. Tool 5: Ticket Reminder — v4.8.5
 
 > Status: **Implemented & Deployed**
 
@@ -878,7 +879,7 @@ docs/ticket-reminder/
   ARCHITECTURE.md                  ← Tech stack, DB schema, API routes
   UI_SPEC.md                       ← Giao diện, HTML, CSS
   MANAGEMENT_SPEC.md               ← Webhook, template, handler, products, services, statuses config
-  TAGGING_DESIGN.md                ← Design: tag handler trong Teams message (implemented v4.8.4)
+  TAGGING_DESIGN.md                ← Design: tag handler/commenter/requester trong Teams message (v4.8.5)
 ```
 
 ### 18.3 Supabase tables
@@ -1052,26 +1053,29 @@ RESPONSE 200
 | **AX-34** | Webhook multi-row form: product picker dùng `rowId` DOM namespace — KHÔNG dùng fixed IDs |
 | **AX-35** | `fetch_users_by_ids()` dùng plain GET — KHÔNG thêm HMAC headers, KHÔNG thêm `requestUser` |
 | **AX-36** | `send_mention_message()` dùng cho remind thực tế; `send_message()` chỉ dùng cho `send_test` — KHÔNG dùng lẫn |
-| **AX-37** | `{tagged_handler}` resolved trước khi gọi `render()` — caller truyền vào đã là `<at>Name</at>` hoặc plain name |
+| **AX-37** | Tất cả tagged_* resolved trước khi gọi `render()` — caller truyền vào đã là `<at>Name</at>` hoặc plain name |
+| **AX-38** | `send_mention_message()` nhận `mentions: list[dict]` — KHÔNG truyền single `dict\|None` |
+| **AX-39** | `{tagged_commenter}` lấy từ `last_comment_by` + `last_comment.name` — KHÔNG dùng `assignee_name` |
+| **AX-40** | `{tagged_requester}` lấy từ `requester_login` — KHÔNG dùng `handler_id` hay DB lookup |
 
 ### v4.8.4 chi tiết
 - **Tag handler trong Teams message** — gắn mention `<at>Name</at>` vào remind message
-- **`filter_service.py`**: `build_remind_item()` thêm field `handler_id` từ `ticket["handler"]["id"]`
-- **`ticket_service.py`**: thêm `fetch_users_by_ids(handler_ids: list[int]) → dict[int, dict]`
-  - URL: `https://nexus.vnggames.com/api/ticket-management/v1/users?limit=5000&ids={id1},{id2},...`
-  - Plain GET — không cần HMAC, không cần `requestUser`
-  - `ids` format: comma-separated (không phải PHP-style array)
-  - Map: `handler_id (int) → { email, fullname }` — dùng `email` trực tiếp từ response
-- **`teams_service.py`**: thêm `send_mention_message(url, message_text, mention)`
-  - `mention = { "id": "user@vng.com.vn", "name": "Fullname" }` → gửi Adaptive Card với `msteams.entities`
-  - `mention = None` → fallback plain text `{"text": message_text}`
-  - `send_message` và `send_test` giữ nguyên không thay đổi
-- **`template_service.py`**: thêm `tagged_handler` vào `SAMPLE_DATA` cho preview
-- **`remind.py`**: `SendTicket` model thêm `assignee_name: str` và `handler_id: int | None`
-  - Send endpoint: batch lookup tất cả `handler_id` trước khi loop → `user_map`
-  - Resolve: nếu có `user_info` → `tagged_handler = "<at>Fullname</at>"` + `mention = {...}`; nếu không → plain `assignee_name`, `mention = None`
-  - Gọi `send_mention_message()` thay `send_message()`
-- **Frontend**: `{tagged_handler}` thêm vào hint placeholders trong Templates config UI; payload gửi tự bao gồm `handler_id` và `assignee_name` từ ticket object
+- **`filter_service.py`**: `build_remind_item()` thêm field `handler_id`, `assignee_name`
+- **`ticket_service.py`**: thêm `fetch_users_by_ids()` — plain GET, không HMAC (giữ lại nhưng không gọi; nexus users API không accessible từ Railway)
+- **`teams_service.py`**: thêm `send_mention_message(url, message_text, mention: dict|None)` — Adaptive Card v1.2
+- **`template_service.py`**: thêm `tagged_handler` vào `SAMPLE_DATA`
+- **`remind.py`**: `SendTicket` thêm `assignee_name`, `handler_id`; send endpoint dùng `handler_usernames` name-matching thay users API
+- **Frontend**: payload thêm `assignee_name`, `handler_id`; hint thêm `{tagged_handler}`
+
+### v4.8.5 chi tiết
+- **Thêm 3 placeholders mới** cho Teams message
+- **`{tagged_commenter}`**: tag người comment cuối — từ `last_comment.user.username` + `name` trong comments API response
+- **`{tagged_requester}`**: tag người tạo ticket — từ `ticket.requester.login` (đã có trong job result)
+- **`{ticket_link}`**: hyperlink `[#id](url)` trong Adaptive Card TextBlock (Markdown)
+- **`teams_service.py`**: `send_mention_message` đổi signature `mention: dict|None` → `mentions: list[dict]`; build `entities` array hỗ trợ 0–3 mentions đồng thời
+- **`remind.py`**: `SendTicket` thêm `last_comment_username`, `last_comment_name`, `requester_login`; resolve 3 mention blocks; `mentions = [m for m in [...] if m]`
+- **`template_service.py`**: SAMPLE_DATA thêm `ticket_link`, `tagged_commenter`, `tagged_requester`
+- **Frontend**: payload thêm `last_comment_username`, `last_comment_name`, `requester_login`; hint text cập nhật đủ 9 placeholders
 
 ---
 

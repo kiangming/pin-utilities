@@ -53,10 +53,15 @@ is_default   : boolean      — fallback khi không match product nào
 | `{requester_name}` | ticket.requester.name | `John Doe` |
 | `{product_name}` | ticket.product.name | `GameA` |
 | `{ticket_id}` | ticket.id | `1234` |
-| `{due_date}` | due_date_fmt DD/MM/YYYY | `15/04/2024` |
+| `{ticket_link}` | Markdown hyperlink `[#id](url)` | `[#1234](https://nexus.../1234)` |
+| `{due_date}` | due_date_fmt DD/MM/YYYY | `15/04/2026` |
 | `{days_left}` | diff_days (âm nếu quá hạn) | `3` hoặc `-2` |
-| `{time_label}` | computed | `will expire on 15/04/2024` |
-| `{tagged_handler}` | Teams mention hoặc plain name | `<at>Vũ Nguyên Kha</at>` hoặc `Vũ Nguyên Kha` |
+| `{time_label}` | computed | `will expire on 15/04/2026` |
+| `{tagged_handler}` | Teams mention handler (từ `handler_usernames` DB) | `<at>Vũ Nguyên Kha</at>` |
+| `{tagged_commenter}` | Teams mention last commenter (từ comments API) | `<at>Châu Quốc Hưng</at>` |
+| `{tagged_requester}` | Teams mention requester (từ ticket.requester.login) | `<at>John Doe</at>` |
+
+**Fallback:** Nếu không resolve được username → render plain text (tên không có `<at>` tag). Message vẫn gửi được.
 
 ### 2.2 time_label logic
 ```python
@@ -66,16 +71,37 @@ else:
     return f"will expire on {fmt}"
 ```
 
-### 2.3 tagged_handler logic
+### 2.3 Tag mention logic
+
+**`{tagged_handler}`:**
+```
+Lookup assignee_name.lower() trong handler_usernames DB
+  → match: tagged_handler = "<at>full_name</at>", mention = { id: username@vng.com.vn }
+  → no match: tagged_handler = assignee_name (plain text)
+```
+
+**`{tagged_commenter}`:**
+```
+Từ last_comment.user.username + last_comment.user.name
+  → có username: tagged_commenter = "<at>name</at>", mention = { id: username@vng.com.vn }
+  → không có: tagged_commenter = "" (rỗng)
+```
+
+**`{tagged_requester}`:**
+```
+Từ ticket.requester.login + ticket.requester.name
+  → có login: tagged_requester = "<at>name</at>", mention = { id: login@vng.com.vn }
+  → không có: tagged_requester = requester_name (plain text)
+```
+
+Tất cả 3 mention được tập hợp thành `mentions: list[dict]` và gửi trong 1 Adaptive Card. Template có thể dùng 0, 1, 2, hoặc cả 3 placeholder tùy nhu cầu.
+
+### 2.4 Template mẫu gợi ý
 
 ```
-Khi send_remind():
-  Nếu handler_id có và fetch_users_by_ids() trả về user_info:
-    tagged_handler = "<at>{fullname}</at>"     → Teams mention (Adaptive Card)
-    mention = { id: email, name: fullname }
-  Else:
-    tagged_handler = assignee_name             → plain text fallback
-    mention = None                             → gửi plain text payload
+Hi {tagged_requester}, ticket {ticket_link} ({product_name}) {time_label}.
+{tagged_commenter} please check and respond.
+cc: {tagged_handler}
 ```
 
 ### 2.4 Template mặc định (seed data)

@@ -162,18 +162,34 @@ GET  /api/remind/tickets/fetch/status?job_id=
      result: { total, remind_count, no_due_date_count, tickets: [...] }
 ```
 
+### Access Check
+```
+GET /api/remind/access   (require_session — không cần require_ticket_access)
+    → { allowed: bool }
+    Kiểm tra email của session có trong TICKET_TOOL_ALLOWED_EMAILS không.
+    Không raise 403 — trả về JSON để frontend ẩn/hiện nav.
+```
+
 ### Remind Send
 ```
 POST /api/remind/send
-     Body: { tickets: [{ id, product_name, requester_name, assignee_name, handler_id,
-                          due_date_fmt, diff_days, time_label, title, ticket_url }] }
+     Body: { tickets: [{ id, product_name, requester_name, requester_login,
+                          assignee_name, handler_id, due_date_fmt, diff_days,
+                          time_label, title, ticket_url,
+                          last_comment_username, last_comment_name }] }
      → { results: [{ ticket_id, status, channel, message, error }], sent, failed, skipped }
 
 Flow:
-  1. Batch lookup: fetch_users_by_ids(unique handler_ids) → user_map
-  2. Per ticket: resolve tagged_handler + mention from user_map
-  3. render(template, {..., tagged_handler}) → message_text
-  4. send_mention_message(url, message_text, mention)
+  1. Load handler_name_map từ DB: full_name.lower() → { username, full_name }
+  2. Per ticket:
+     a. find_webhook_for_product(product_name)
+     b. Resolve handler_mention: lookup assignee_name → handler_usernames DB
+     c. Resolve commenter_mention: từ last_comment_username + last_comment_name
+     d. Resolve requester_mention: từ requester_login + requester_name
+     e. Build ticket_link: "[#id](ticket_url)"
+     f. render(template, {..., tagged_handler, tagged_commenter, tagged_requester, ticket_link})
+     g. mentions = [handler_mention, commenter_mention, requester_mention] (bỏ None)
+     h. send_mention_message(url, message_text, mentions)  ← list[dict], 0–3 entries
 ```
 
 ### Webhooks CRUD
@@ -331,7 +347,46 @@ SUPABASE_SERVICE_KEY=...
 
 # Debug (tắt trên production)
 DEBUG_TICKET_API=false
+
+# Access control — comma-separated emails; empty string = deny all
+TICKET_TOOL_ALLOWED_EMAILS=user1@company.com,user2@company.com
 ```
+
+---
+
+## 8. Access Control
+
+### 8.1 Backend — `require_ticket_access` dependency
+
+```python
+def require_ticket_access(session: SessionData = Depends(require_session)) -> SessionData:
+    """403 nếu email không trong allowed list."""
+    allowed = _allowed_emails()  # parse TICKET_TOOL_ALLOWED_EMAILS
+    if not allowed or session.user.email.lower() not in allowed:
+        raise HTTPException(status_code=403, detail="Access denied")
+    return session
+```
+
+- `TICKET_TOOL_ALLOWED_EMAILS` rỗng → deny all (không phải allow all)
+- Các routes cần write/sensitive dùng `Depends(require_ticket_access)`
+- Read-only routes (`GET /webhooks`, `GET /templates`, `GET /handlers`, `GET /services`, `GET /statuses`) chỉ cần `Depends(require_session)`
+- `GET /api/remind/access` chỉ cần `require_session`, không raise 403 — trả `{ allowed: bool }`
+
+### 8.2 Frontend — nav hiding
+
+```js
+ApiClient.get('/api/remind/access').then(res => {
+    if (res.allowed) {
+        // Hiện nav items Ticket Fetch + Remind Config
+        document.getElementById('nav-ticket-header').style.display = '';
+        document.getElementById('nav-ticket-fetch').style.display = '';
+        document.getElementById('nav-remind-config').style.display = '';
+        document.getElementById('nav-ticket-divider-bottom').style.display = '';
+    }
+});
+```
+
+Nav items ẩn mặc định (`style="display:none;"`). User không có quyền không thấy menu, không thể truy cập tool.
 
 ---
 
