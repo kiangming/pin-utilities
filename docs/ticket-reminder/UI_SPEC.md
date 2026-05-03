@@ -256,7 +256,7 @@ Form thêm: Username (required) | Full Name | Note
 |---|---|
 | `.tkr-config-tabs` | Tab bar |
 | `.tkr-config-tab-btn` | Tab button, `.active` = underline |
-| `.tkr-tab-content` | Tab panel (show/hide) |
+| `.tkr-tab-content` | Tab panel (show/hide). `flex:1; min-height:0; overflow-y:auto; overflow-x:visible` — tự scroll dọc khi content dài (v4.8.6). Product picker `position:fixed` append vào `<body>` không bị clip |
 | `.tkr-config-table` | Config CRUD tables |
 | `.tkr-inline-form` | Inline form, `.visible` = show |
 | `.tkr-wh-rows-body` | Tbody của multi-row add form |

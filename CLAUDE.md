@@ -574,6 +574,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.8.3** | **Apr 2026** | **Webhook multi-row add form; "Reminded" green badge + row tint khi quay lại từ remind view; Product column format id-[code-name]; fix sig_params comments/detail API** |
 | **v4.8.4** | **Apr 2026** | **Tag handler trong Teams message: `{tagged_handler}` placeholder, Adaptive Card mention, handler_usernames name-matching** |
 | **v4.8.5** | **Apr 2026** | **Thêm `{tagged_commenter}`, `{tagged_requester}`, `{ticket_link}` placeholders; send_mention_message nhận list[dict] hỗ trợ multi-mention** |
+| **v4.8.6** | **May 2026** | **Fix Remind Config tabs không scroll khi list dài: `.tkr-tab-content` đổi `overflow:visible` → `overflow-y:auto`** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -1076,6 +1077,13 @@ RESPONSE 200
 - **`remind.py`**: `SendTicket` thêm `last_comment_username`, `last_comment_name`, `requester_login`; resolve 3 mention blocks; `mentions = [m for m in [...] if m]`
 - **`template_service.py`**: SAMPLE_DATA thêm `ticket_link`, `tagged_commenter`, `tagged_requester`
 - **Frontend**: payload thêm `last_comment_username`, `last_comment_name`, `requester_login`; hint text cập nhật đủ 9 placeholders
+
+### v4.8.6 chi tiết
+- **Fix Remind Config tabs không scroll**: list webhook (và các tab Templates/Handlers/Services/Products/Statuses/Logs) bị clip khi nội dung dài hơn vùng visible
+- **Root cause**: `.tkr-tab-content { overflow: visible }` — content tràn ra bị clip bởi `.tool-panel { overflow:hidden }` của ancestor, không có scrollbar
+- **Fix**: đổi sang `overflow-y: auto; overflow-x: visible` — mỗi tab tự scroll dọc khi content vượt height
+- **Không ảnh hưởng product picker**: `#tkr-body-product-panel` được append vào `<body>` với `position:fixed`, thoát mọi overflow context của ancestor
+- **Bump cache**: `ticket-reminder.css?v=1.0` → `?v=1.1`
 
 ---
 
