@@ -292,7 +292,7 @@
 .tkr-result-area { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .tkr-remind-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .tkr-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; overflow-x: visible; }
-.tkr-tab-content { flex: 1; min-height: 0; overflow: visible; }
+.tkr-tab-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: visible; }
 
 /* ── Ticket table (full 10-column layout) ── */
 .tkr-table--tickets { table-layout: fixed; min-width: 1240px; }
