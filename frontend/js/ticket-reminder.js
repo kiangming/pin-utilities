@@ -635,6 +635,7 @@ const TicketReminderPanel = (() => {
     form.querySelector('#tkr-tmpl-content').value = data ? data.content : '';
     form.querySelector('#tkr-tmpl-default').checked = data ? !!data.is_default : false;
     form.classList.add('visible');
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     form.querySelector('#tkr-tmpl-name').focus();
   }
 
@@ -692,7 +693,11 @@ const TicketReminderPanel = (() => {
 
   function showHandlerForm() {
     const form = document.getElementById('tkr-handler-form');
-    if (form) { form.classList.add('visible'); form.querySelector('#tkr-hdl-username').focus(); }
+    if (form) {
+      form.classList.add('visible');
+      form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      form.querySelector('#tkr-hdl-username').focus();
+    }
   }
 
   function hideHandlerForm() {
@@ -1140,6 +1145,33 @@ const TicketReminderPanel = (() => {
 
   function _buildWebhooksTab(rows) {
     return `
+      <div style="margin-bottom:14px;">
+        <button class="tkr-btn-primary" onclick="TicketReminderPanel.showWebhookMultiForm()">+ Thêm Webhook</button>
+      </div>
+
+      <!-- Multi-row add form -->
+      <div id="tkr-wh-add-form" style="display:none;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;">Thêm webhook mới</div>
+        <div style="overflow-x:auto;">
+          <table class="tkr-config-table" style="min-width:700px;">
+            <thead><tr>
+              <th style="min-width:160px;">Product <span style="color:#ef4444;">*</span></th>
+              <th style="min-width:110px;">Channel <span style="color:#ef4444;">*</span></th>
+              <th style="min-width:200px;">Webhook URL <span style="color:#ef4444;">*</span></th>
+              <th style="min-width:120px;">Template</th>
+              <th style="width:60px;">Default</th>
+              <th style="width:40px;"></th>
+            </tr></thead>
+            <tbody id="tkr-wh-rows-body"></tbody>
+          </table>
+          <div style="min-width:700px;display:flex;align-items:center;gap:10px;margin-top:10px;">
+            <button class="tkr-btn" onclick="TicketReminderPanel.addWebhookRow()">+ Thêm dòng</button>
+            <button class="tkr-btn-primary" id="tkr-wh-save-all-btn" onclick="TicketReminderPanel.saveAllWebhooks()">💾 Lưu tất cả (1)</button>
+            <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookMultiForm()">Hủy</button>
+          </div>
+        </div>
+      </div>
+
       <table class="tkr-config-table">
         <thead><tr>
           <th>Product</th><th>Channel</th><th>Webhook URL</th><th>Template</th><th>Default</th><th>Actions</th>
@@ -1162,32 +1194,6 @@ const TicketReminderPanel = (() => {
           `).join('')}
         </tbody>
       </table>
-      <div style="margin-top:12px;">
-        <button class="tkr-btn-primary" onclick="TicketReminderPanel.showWebhookMultiForm()">+ Thêm Webhook</button>
-      </div>
-
-      <!-- Multi-row add form -->
-      <div id="tkr-wh-add-form" style="display:none;margin-top:14px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;">Thêm webhook mới</div>
-        <div style="overflow-x:auto;">
-          <table class="tkr-config-table" style="min-width:700px;">
-            <thead><tr>
-              <th style="min-width:160px;">Product <span style="color:#ef4444;">*</span></th>
-              <th style="min-width:110px;">Channel <span style="color:#ef4444;">*</span></th>
-              <th style="min-width:200px;">Webhook URL <span style="color:#ef4444;">*</span></th>
-              <th style="min-width:120px;">Template</th>
-              <th style="width:60px;">Default</th>
-              <th style="width:40px;"></th>
-            </tr></thead>
-            <tbody id="tkr-wh-rows-body"></tbody>
-          </table>
-          <div style="min-width:700px;display:flex;align-items:center;gap:10px;margin-top:10px;">
-            <button class="tkr-btn" onclick="TicketReminderPanel.addWebhookRow()">+ Thêm dòng</button>
-            <button class="tkr-btn-primary" id="tkr-wh-save-all-btn" onclick="TicketReminderPanel.saveAllWebhooks()">💾 Lưu tất cả (1)</button>
-            <button class="tkr-btn" onclick="TicketReminderPanel.hideWebhookMultiForm()">Hủy</button>
-          </div>
-        </div>
-      </div>
 
       <!-- Edit form -->
       <div class="tkr-inline-form" id="tkr-wh-edit-form">
@@ -1220,28 +1226,10 @@ const TicketReminderPanel = (() => {
 
   function _buildTemplatesTab(rows) {
     return `
-      <table class="tkr-config-table">
-        <thead><tr><th>Tên</th><th>Preview</th><th>Default</th><th>Actions</th></tr></thead>
-        <tbody>
-          ${rows.length === 0 ? `<tr><td colspan="4"><div class="tkr-empty"><div class="tkr-empty-icon">📝</div><div class="tkr-empty-text">Chưa có template.</div></div></td></tr>` : ''}
-          ${rows.map(t => `
-            <tr>
-              <td>${_esc(t.name)}</td>
-              <td style="font-size:11px;color:var(--text3);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc((t.content || '').substring(0, 60))}...</td>
-              <td>${t.is_default ? '★' : ''}</td>
-              <td style="white-space:nowrap;">
-                <button class="tkr-btn" title="Edit" onclick="TicketReminderPanel.showTemplateForm(${JSON.stringify(t).replace(/"/g, '&quot;')})">✏</button>
-                <button class="tkr-btn tkr-btn-danger" title="Delete" onclick="TicketReminderPanel.deleteTemplate('${t.id}')">🗑</button>
-                <button class="tkr-btn" title="Preview" onclick="TicketReminderPanel.previewTemplate('${t.id}')">👁</button>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <div style="margin-top:12px;">
+      <div style="margin-bottom:14px;">
         <button class="tkr-btn-primary" onclick="TicketReminderPanel.showTemplateForm(null)">+ Thêm Template</button>
       </div>
-      <div class="tkr-inline-form" id="tkr-template-form">
+      <div class="tkr-inline-form" id="tkr-template-form" style="margin-bottom:14px;">
         <div class="tkr-form-grid">
           <div class="tkr-field"><label class="tkr-label" for="tkr-tmpl-name">Tên template</label><input class="tkr-input" id="tkr-tmpl-name"></div>
           <div class="tkr-field" style="justify-content:flex-end;padding-top:18px;">
@@ -1263,11 +1251,43 @@ const TicketReminderPanel = (() => {
           <button class="tkr-btn" onclick="TicketReminderPanel.hideTemplateForm()">Hủy</button>
         </div>
       </div>
+      <table class="tkr-config-table">
+        <thead><tr><th>Tên</th><th>Preview</th><th>Default</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length === 0 ? `<tr><td colspan="4"><div class="tkr-empty"><div class="tkr-empty-icon">📝</div><div class="tkr-empty-text">Chưa có template.</div></div></td></tr>` : ''}
+          ${rows.map(t => `
+            <tr>
+              <td>${_esc(t.name)}</td>
+              <td style="font-size:11px;color:var(--text3);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_esc((t.content || '').substring(0, 60))}...</td>
+              <td>${t.is_default ? '★' : ''}</td>
+              <td style="white-space:nowrap;">
+                <button class="tkr-btn" title="Edit" onclick="TicketReminderPanel.showTemplateForm(${JSON.stringify(t).replace(/"/g, '&quot;')})">✏</button>
+                <button class="tkr-btn tkr-btn-danger" title="Delete" onclick="TicketReminderPanel.deleteTemplate('${t.id}')">🗑</button>
+                <button class="tkr-btn" title="Preview" onclick="TicketReminderPanel.previewTemplate('${t.id}')">👁</button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     `;
   }
 
   function _buildHandlersTab(rows) {
     return `
+      <div style="margin-bottom:14px;">
+        <button class="tkr-btn-primary" onclick="TicketReminderPanel.showHandlerForm()">+ Thêm Handler</button>
+      </div>
+      <div class="tkr-inline-form" id="tkr-handler-form" style="margin-bottom:14px;">
+        <div class="tkr-form-grid">
+          <div class="tkr-field"><label class="tkr-label" for="tkr-hdl-username">Username (domain)</label><input class="tkr-input" id="tkr-hdl-username" placeholder="nguyen.vana"></div>
+          <div class="tkr-field"><label class="tkr-label" for="tkr-hdl-fullname">Full Name</label><input class="tkr-input" id="tkr-hdl-fullname"></div>
+          <div class="tkr-field"><label class="tkr-label" for="tkr-hdl-note">Note</label><input class="tkr-input" id="tkr-hdl-note"></div>
+        </div>
+        <div class="tkr-form-actions">
+          <button class="tkr-btn-primary tkr-save-btn" onclick="TicketReminderPanel.saveHandler()">Lưu</button>
+          <button class="tkr-btn" onclick="TicketReminderPanel.hideHandlerForm()">Hủy</button>
+        </div>
+      </div>
       <table class="tkr-config-table">
         <thead><tr><th>Username</th><th>Full Name</th><th>Note</th><th>Actions</th></tr></thead>
         <tbody>
@@ -1284,20 +1304,6 @@ const TicketReminderPanel = (() => {
           `).join('')}
         </tbody>
       </table>
-      <div style="margin-top:12px;">
-        <button class="tkr-btn-primary" onclick="TicketReminderPanel.showHandlerForm()">+ Thêm Handler</button>
-      </div>
-      <div class="tkr-inline-form" id="tkr-handler-form">
-        <div class="tkr-form-grid">
-          <div class="tkr-field"><label class="tkr-label" for="tkr-hdl-username">Username (domain)</label><input class="tkr-input" id="tkr-hdl-username" placeholder="nguyen.vana"></div>
-          <div class="tkr-field"><label class="tkr-label" for="tkr-hdl-fullname">Full Name</label><input class="tkr-input" id="tkr-hdl-fullname"></div>
-          <div class="tkr-field"><label class="tkr-label" for="tkr-hdl-note">Note</label><input class="tkr-input" id="tkr-hdl-note"></div>
-        </div>
-        <div class="tkr-form-actions">
-          <button class="tkr-btn-primary tkr-save-btn" onclick="TicketReminderPanel.saveHandler()">Lưu</button>
-          <button class="tkr-btn" onclick="TicketReminderPanel.hideHandlerForm()">Hủy</button>
-        </div>
-      </div>
     `;
   }
 
