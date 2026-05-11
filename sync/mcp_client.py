@@ -2,7 +2,7 @@
 MCP API client — gọi tool sdk_version_snapshot qua MCP Streamable HTTP (JSON-RPC 2.0).
 
 Server: https://mcp-gateway.gio.vng.vn/mcp
-Auth:   Authorization: Bearer <MCP_BEARER_TOKEN>
+Auth:   OAuth 2.0 Client Credentials — access_token lấy từ oauth_client.get_token()
 """
 import json
 import os
@@ -11,8 +11,9 @@ from typing import Dict, List, Optional
 
 import httpx
 
+import oauth_client
+
 MCP_URL = os.getenv("MCP_BASE_URL", "").rstrip("/")
-MCP_BEARER_TOKEN = os.getenv("MCP_BEARER_TOKEN", "")
 REQUEST_TIMEOUT = int(os.getenv("MCP_TIMEOUT_SECONDS", "30"))
 
 _req_id = 0
@@ -26,22 +27,30 @@ def _next_id() -> int:
 
 def _headers() -> Dict:
     return {
-        "Authorization": f"Bearer {MCP_BEARER_TOKEN}",
+        "Authorization": f"Bearer {oauth_client.get_token()}",
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
     }
 
 
 def _call_jsonrpc(method: str, params: Dict) -> Dict:
-    """Gửi 1 JSON-RPC request tới MCP server, trả về result dict."""
+    """Gửi 1 JSON-RPC request tới MCP server, trả về result dict.
+    Nếu MCP trả 401 → invalidate token cache + retry 1 lần."""
     payload = {
         "jsonrpc": "2.0",
         "id": _next_id(),
         "method": method,
         "params": params,
     }
-    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        resp = client.post(MCP_URL, headers=_headers(), json=payload)
+    for attempt in range(2):
+        with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
+            resp = client.post(MCP_URL, headers=_headers(), json=payload)
+
+        if resp.status_code == 401 and attempt == 0:
+            # Token có thể bị revoke giữa chừng — force refresh + retry
+            oauth_client.invalidate()
+            continue
+
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")
@@ -51,6 +60,9 @@ def _call_jsonrpc(method: str, params: Dict) -> Dict:
             return _parse_sse(resp.text)
 
         return resp.json()
+
+    # Không nên tới đây
+    raise RuntimeError("MCP request failed after retry")
 
 
 def _parse_sse(text: str) -> Dict:
