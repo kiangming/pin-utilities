@@ -221,6 +221,7 @@ const TicketReminderPanel = (() => {
       product_name:          t.product_name,
       requester_name:        t.requester_name,
       assignee_name:         t.assignee_name || "",
+      assignee_username:     t.assignee_username || "",
       handler_id:            t.handler_id || null,
       due_date_fmt:          t.due_date_fmt || "",
       diff_days:             t.diff_days,

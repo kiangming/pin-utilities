@@ -58,6 +58,7 @@ class SendTicket(BaseModel):
     product_name: str
     requester_name: str
     assignee_name: str = ""
+    assignee_username: str = ""       # username của handler → dùng để tag (từ ticket.handler.username)
     handler_id: int | None = None
     due_date_fmt: str = ""
     diff_days: int | None = None
@@ -143,16 +144,6 @@ async def send_remind(
     if not req.tickets:
         raise HTTPException(status_code=422, detail="No tickets to remind")
 
-    # Build name → username map từ handler_usernames table
-    # full_name.strip().lower() → { username, full_name }
-    handlers = remind_db.get_handlers()
-    handler_name_map = {
-        h["full_name"].strip().lower(): h
-        for h in handlers
-        if h.get("full_name") and h.get("username")
-    }
-    print(f"[REMIND DEBUG] handler_name_map keys: {list(handler_name_map.keys())}", flush=True)
-
     # Load template & webhook config once
     templates = {t["id"]: t for t in remind_db.get_templates()}
     results = []
@@ -202,18 +193,13 @@ async def send_remind(
             })
             continue
 
-        # Resolve handler mention: match assignee_name → handler_usernames.full_name → username → email
-        handler_key = (ticket.assignee_name or "").strip().lower()
-        handler_info = handler_name_map.get(handler_key)
-        if handler_info:
-            username = handler_info["username"]
-            fullname = handler_info["full_name"]
-            tagged_handler = f"<at>{fullname}</at>"
-            handler_mention = {"id": f"{username}@vng.com.vn", "name": fullname}
+        # Resolve handler mention: lấy thẳng từ ticket.handler.username (Nexus API)
+        if ticket.assignee_username and ticket.assignee_name:
+            tagged_handler = f"<at>{ticket.assignee_name}</at>"
+            handler_mention = {"id": f"{ticket.assignee_username}@vng.com.vn", "name": ticket.assignee_name}
         else:
             tagged_handler = ticket.assignee_name or ""
             handler_mention = None
-        print(f"[REMIND DEBUG] ticket #{ticket.id} assignee={ticket.assignee_name!r} handler_key={handler_key!r} handler_info={handler_info} handler_mention={handler_mention}", flush=True)
 
         # Resolve last commenter mention: từ last_comment_username/last_comment_name
         if ticket.last_comment_username:
@@ -223,7 +209,6 @@ async def send_remind(
         else:
             tagged_commenter = ""
             commenter_mention = None
-        print(f"[REMIND DEBUG] ticket #{ticket.id} lc_username={ticket.last_comment_username!r} lc_name={ticket.last_comment_name!r} commenter_mention={commenter_mention}", flush=True)
 
         # Resolve requester mention
         if ticket.requester_login:
@@ -252,8 +237,19 @@ async def send_remind(
 
         url = webhook["webhook_url"]
 
-        # Build mentions list (0–3 entries)
-        mentions = [m for m in [handler_mention, commenter_mention, requester_mention] if m]
+        # Build mentions list — chỉ add entity nếu <at>Name</at> thực sự xuất hiện trong message
+        # (tránh orphan entity), dedup theo mention.id
+        mentions: list[dict] = []
+        seen_ids: set[str] = set()
+        for m in (handler_mention, commenter_mention, requester_mention):
+            if not m:
+                continue
+            if m["id"] in seen_ids:
+                continue
+            if f"<at>{m['name']}</at>" not in message:
+                continue
+            seen_ids.add(m["id"])
+            mentions.append(m)
 
         # Send with mentions if available, else plain text
         ok, err_msg = teams_service.send_mention_message(url, message, mentions)
