@@ -73,12 +73,13 @@ else:
 
 ### 2.3 Tag mention logic
 
-**`{tagged_handler}`:**
+**`{tagged_handler}`** (v4.8.7+):
 ```
-Lookup assignee_name.lower() trong handler_usernames DB
-  → match: tagged_handler = "<at>full_name</at>", mention = { id: username@vng.com.vn }
-  → no match: tagged_handler = assignee_name (plain text)
+Lấy trực tiếp từ ticket.handler.username + ticket.handler.name (Nexus API)
+  → có username: tagged_handler = "<at>name</at>", mention = { id: username@vng.com.vn }
+  → không có: tagged_handler = assignee_name (plain text)
 ```
+**Note:** Trước v4.8.7 dùng DB lookup `handler_usernames` table — đã bỏ vì API đã có sẵn `username`.
 
 **`{tagged_commenter}`:**
 ```
@@ -127,7 +128,9 @@ SAMPLE_DATA bao gồm `tagged_handler: "Jane Smith"` để preview placeholder.
 ## 3. Handler Usernames
 
 ### 3.1 Mục đích
-`username` của team handler. Khi comment cuối của ticket có `user.username` trong set này → ticket cần nhắc.
+`username` của team handler — dùng cho **need_remind logic**: khi comment cuối của ticket có `user.username` trong set này → ticket cần nhắc.
+
+**Note (v4.8.7+):** Trước đây bảng này còn được dùng để build Teams mention cho `{tagged_handler}` (lookup `assignee_name` → DB → username). Từ v4.8.7 mention lấy thẳng từ `ticket.handler.username` (Nexus API), KHÔNG cần lookup DB. Bảng `handler_usernames` chỉ còn phục vụ need_remind check.
 
 ### 3.2 Lấy username
 Từ field `user.username` trong response của `/tickets/{id}/comments`.

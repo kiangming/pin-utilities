@@ -174,21 +174,22 @@ GET /api/remind/access   (require_session — không cần require_ticket_access
 ```
 POST /api/remind/send
      Body: { tickets: [{ id, product_name, requester_name, requester_login,
-                          assignee_name, handler_id, due_date_fmt, diff_days,
-                          time_label, title, ticket_url,
+                          assignee_name, assignee_username, handler_id,
+                          due_date_fmt, diff_days, time_label, title, ticket_url,
                           last_comment_username, last_comment_name }] }
      → { results: [{ ticket_id, status, channel, message, error }], sent, failed, skipped }
 
-Flow:
-  1. Load handler_name_map từ DB: full_name.lower() → { username, full_name }
+Flow (v4.8.7+):
+  1. Load templates và webhook configs từ DB
   2. Per ticket:
      a. find_webhook_for_product(product_name)
-     b. Resolve handler_mention: lookup assignee_name → handler_usernames DB
+     b. Resolve handler_mention: từ ticket.assignee_username + assignee_name (KHÔNG lookup DB)
      c. Resolve commenter_mention: từ last_comment_username + last_comment_name
      d. Resolve requester_mention: từ requester_login + requester_name
      e. Build ticket_link: "[#id](ticket_url)"
      f. render(template, {..., tagged_handler, tagged_commenter, tagged_requester, ticket_link})
-     g. mentions = [handler_mention, commenter_mention, requester_mention] (bỏ None)
+     g. mentions = chỉ add mention nếu <at>Name</at> có trong message rendered,
+                   dedup theo mention.id (tránh orphan + duplicate entity)
      h. send_mention_message(url, message_text, mentions)  ← list[dict], 0–3 entries
 ```
 
@@ -314,9 +315,10 @@ Mỗi ticket trong job result có các fields:
 | `product_name` | ticket.product.name | Product name |
 | `title` | ticket.title | Tiêu đề ticket |
 | `requester_name` | ticket.requester.name | Tên người tạo |
-| `requester_login` | ticket.requester.login | Login người tạo |
+| `requester_login` | ticket.requester.**username** | Login người tạo (API trả `username` không phải `login`) |
 | `assignee_name` | ticket.handler.name | Tên người xử lý |
-| `handler_id` | ticket.handler.id | ID người xử lý — dùng để batch lookup mention |
+| `assignee_username` | ticket.handler.**username** | Username handler — dùng trực tiếp để build mention (v4.8.7) |
+| `handler_id` | ticket.handler.id | ID người xử lý |
 | `created_at` | ticket.created_at | Ngày tạo (ISO) |
 | `status` | ticket.status.name | Trạng thái |
 | `due_date` | ticket.due_date | YYYY-MM-DD |

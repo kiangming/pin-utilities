@@ -158,13 +158,13 @@ GET {BASE_URL}/tickets
       },
       "requester": {
         "id": 10,
-        "login": "user.domain",
-        "fullname": "Nguyen Van A"
+        "name": "Nguyen Van A",
+        "username": "user.domain"
       },
       "handler": {
         "id": 11,
-        "login": "handler.domain",
-        "fullname": "Tran Van B"
+        "name": "Tran Van B",
+        "username": "handler.domain"
       },
       "products": [
         { "id": 5, "name": "Product A" }
@@ -199,7 +199,10 @@ GET {BASE_URL}/tickets
 |---|---|
 | `id` | Fetch comment, fetch detail |
 | `products[0].name` | Routing webhook |
-| `requester.fullname` | Điền vào template message |
+| `requester.name` | Điền vào template message |
+| `requester.username` | Build Teams mention `<at>Name</at>` cho requester |
+| `handler.name` | Display tên handler |
+| `handler.username` | Build Teams mention `<at>Name</at>` cho handler (v4.8.7+, không qua DB lookup) |
 | `due_date` | Tính số ngày còn lại (`diffDays`) |
 | `status.name` | Lọc theo status nếu cần |
 

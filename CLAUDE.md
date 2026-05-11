@@ -575,6 +575,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.8.4** | **Apr 2026** | **Tag handler trong Teams message: `{tagged_handler}` placeholder, Adaptive Card mention, handler_usernames name-matching** |
 | **v4.8.5** | **Apr 2026** | **Thêm `{tagged_commenter}`, `{tagged_requester}`, `{ticket_link}` placeholders; send_mention_message nhận list[dict] hỗ trợ multi-mention** |
 | **v4.8.6** | **May 2026** | **Fix Remind Config tabs không scroll khi list dài: `.tkr-tab-content` đổi `overflow:visible` → `overflow-y:auto`** |
+| **v4.8.7** | **May 2026** | **Fix `{tagged_requester}` tag được; bỏ DB lookup cho handler mention (dùng thẳng `ticket.handler.username`); orphan/dedup check trên `msteams.entities`** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -838,7 +839,7 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ---
 
-## 18. Tool 5: Ticket Reminder — v4.8.5
+## 18. Tool 5: Ticket Reminder — v4.8.7
 
 > Status: **Implemented & Deployed**
 
@@ -1058,6 +1059,9 @@ RESPONSE 200
 | **AX-38** | `send_mention_message()` nhận `mentions: list[dict]` — KHÔNG truyền single `dict\|None` |
 | **AX-39** | `{tagged_commenter}` lấy từ `last_comment_by` + `last_comment.name` — KHÔNG dùng `assignee_name` |
 | **AX-40** | `{tagged_requester}` lấy từ `requester_login` — KHÔNG dùng `handler_id` hay DB lookup |
+| **AX-41** | `requester_login` đọc từ `ticket.requester.username` (Nexus API trả `username`, không phải `login`). Tương tự `assignee_username` đọc từ `ticket.handler.username` |
+| **AX-42** | Handler mention build từ `ticket.assignee_username` trực tiếp — KHÔNG lookup DB `handler_usernames`. Table này chỉ dùng cho `is_need_remind` check (comment author) và CRUD UI |
+| **AX-43** | Mention chỉ add vào `msteams.entities` nếu `<at>Name</at>` thực sự có trong rendered message (tránh orphan entity). Dedup theo `mention.id` để tránh duplicate khi handler == commenter |
 
 ### v4.8.4 chi tiết
 - **Tag handler trong Teams message** — gắn mention `<at>Name</at>` vào remind message
@@ -1084,6 +1088,22 @@ RESPONSE 200
 - **Fix**: đổi sang `overflow-y: auto; overflow-x: visible` — mỗi tab tự scroll dọc khi content vượt height
 - **Không ảnh hưởng product picker**: `#tkr-body-product-panel` được append vào `<body>` với `position:fixed`, thoát mọi overflow context của ancestor
 - **Bump cache**: `ticket-reminder.css?v=1.0` → `?v=1.1`
+
+### v4.8.7 chi tiết
+- **API field name correction**: Nexus `/tickets` trả `requester`/`handler` với fields `{id, name, username}` — KHÔNG phải `{id, login, fullname}` như doc cũ ghi
+- **`filter_service.py`**: `requester_login` đọc `requester.username` (trước: `requester.get("login")` luôn rỗng); thêm field `assignee_username` đọc `handler.username`
+- **`remind.py` SendTicket**: thêm field `assignee_username`
+- **`remind.py` send flow**: bỏ `handler_name_map` build từ `remind_db.get_handlers()` — handler mention build trực tiếp từ `ticket.assignee_username` + `ticket.assignee_name`
+  - Trước: lookup DB `handler_usernames` table theo `full_name.lower()` → username → mention.id
+  - Sau: dùng thẳng API data — mọi handler đều tag được tự động, không cần admin add trước
+- **Orphan/dedup check trên mentions**: chỉ add vào `msteams.entities` nếu `<at>Name</at>` thực sự có trong rendered message; dedup theo `mention.id`
+  - Trước: 3 mention luôn add vào array regardless template usage → orphan entity (text không match `<at>` nào trong body) + duplicate khi handler == commenter
+  - Sau: JSON sạch, đúng Microsoft spec (exact-match `<at>X</at>` ↔ entity text)
+- **Frontend payload** ([ticket-reminder.js:224](frontend/js/ticket-reminder.js#L224)): thêm `assignee_username: t.assignee_username || ""`
+- **`handler_usernames` table** vẫn được dùng cho:
+  1. `is_need_remind()` — check `last_comment.user.username in handler_usernames` để biết comment cuối là handler hay requester
+  2. Tab "Handlers" trong Remind Config UI — CRUD bình thường
+- **Bump cache**: `ticket-reminder.js?v=1.1` → `?v=1.2`
 
 ---
 
