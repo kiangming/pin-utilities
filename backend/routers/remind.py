@@ -4,6 +4,9 @@ Tất cả routes require_session().
 """
 from __future__ import annotations
 
+import os
+import time
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -19,6 +22,11 @@ from backend.services import (
 )
 
 router = APIRouter(prefix="/api/remind", tags=["remind"])
+
+# Delay giữa các lần gửi webhook để tránh rate limit (mặc định 700ms)
+WEBHOOK_DELAY_SECONDS = float(os.getenv("WEBHOOK_DELAY_SECONDS", "0.7"))
+# Delay trước khi retry khi lần gửi đầu fail (mặc định 2s)
+WEBHOOK_RETRY_DELAY_SECONDS = float(os.getenv("WEBHOOK_RETRY_DELAY_SECONDS", "2.0"))
 
 
 def _request_user(session: SessionData) -> str:
@@ -148,8 +156,9 @@ async def send_remind(
     templates = {t["id"]: t for t in remind_db.get_templates()}
     results = []
     sent = failed = skipped = 0
+    total = len(req.tickets)
 
-    for ticket in req.tickets:
+    for idx, ticket in enumerate(req.tickets):
         # Find webhook
         webhook = remind_db.find_webhook_for_product(ticket.product_name)
         if not webhook:
@@ -251,8 +260,17 @@ async def send_remind(
             seen_ids.add(m["id"])
             mentions.append(m)
 
-        # Send with mentions if available, else plain text
+        # Send with mentions if available, else plain text — auto retry 1 lần nếu fail
         ok, err_msg = teams_service.send_mention_message(url, message, mentions)
+        if not ok:
+            print(f"[REMIND] ticket #{ticket.id} first send failed ({err_msg}) — retry sau {WEBHOOK_RETRY_DELAY_SECONDS}s", flush=True)
+            time.sleep(WEBHOOK_RETRY_DELAY_SECONDS)
+            ok2, err_msg2 = teams_service.send_mention_message(url, message, mentions)
+            if ok2:
+                ok, err_msg = True, None
+                print(f"[REMIND] ticket #{ticket.id} retry success", flush=True)
+            else:
+                err_msg = f"Failed after retry. First: {err_msg} | Retry: {err_msg2}"
 
         if ok:
             sent += 1
@@ -294,6 +312,10 @@ async def send_remind(
                 "status": "failed",
                 "error_msg": err_msg,
             })
+
+        # Delay giữa các send để tránh rate limit Teams webhook (~4 req/sec)
+        if idx < total - 1:
+            time.sleep(WEBHOOK_DELAY_SECONDS)
 
     return {"results": results, "sent": sent, "failed": failed, "skipped": skipped}
 

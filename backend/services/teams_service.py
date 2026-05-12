@@ -9,6 +9,22 @@ import time
 import httpx
 
 
+# Markers trong response body — Teams trả 200 nhưng downstream delivery fail
+# (rate limit, bot endpoint timeout, UPN không resolve, v.v.)
+_FAILURE_MARKERS = (
+    "webhook message delivery failed",
+    "error contacting microsoft teams endpoint",
+)
+
+
+def _is_delivery_failure(resp_text: str) -> bool:
+    """HTTP 200 nhưng body báo lỗi delivery → coi như failed."""
+    if not resp_text:
+        return False
+    lower = resp_text.lower()
+    return any(marker in lower for marker in _FAILURE_MARKERS)
+
+
 def send_message(webhook_url: str, message: str) -> tuple[bool, str | None]:
     """
     POST webhook_url với body {"text": message}.
@@ -22,6 +38,8 @@ def send_message(webhook_url: str, message: str) -> tuple[bool, str | None]:
                 headers={"Content-Type": "application/json"},
             )
         if resp.status_code < 300:
+            if _is_delivery_failure(resp.text):
+                return False, f"Teams delivery failed (HTTP 200): {resp.text[:200]}"
             return True, None
         return False, f"Teams trả lỗi HTTP {resp.status_code}: {resp.text[:200]}"
     except httpx.TimeoutException:
@@ -79,6 +97,8 @@ def send_mention_message(
             )
         print(f"TEAMS RESPONSE: {resp.status_code} — {resp.text[:300]}", flush=True)
         if resp.status_code < 300:
+            if _is_delivery_failure(resp.text):
+                return False, f"Teams delivery failed (HTTP 200): {resp.text[:200]}"
             return True, None
         return False, f"Teams trả lỗi HTTP {resp.status_code}: {resp.text[:200]}"
     except httpx.TimeoutException:
