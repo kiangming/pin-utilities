@@ -73,15 +73,24 @@ def format_due_date(due_date_str: str) -> str:
 def _extract_product(ticket: dict) -> tuple[str, str, str]:
     """Lấy product id, code, name từ ticket.
     API có thể trả về 'product' (object) hoặc 'products' (array).
+    Strip whitespace để tránh mismatch với webhook_configs (Nexus có thể trả tên kèm trailing space).
     """
     # Thử dạng object trước (theo spec mới)
     product = ticket.get("product")
     if product and isinstance(product, dict):
-        return str(product.get("id", "")), product.get("code", ""), product.get("name", "")
+        return (
+            str(product.get("id", "")),
+            (product.get("code") or "").strip(),
+            (product.get("name") or "").strip(),
+        )
     # Fallback: dạng array cũ
     products = ticket.get("products") or []
     if products:
-        return str(products[0].get("id", "")), products[0].get("code", ""), products[0].get("name", "")
+        return (
+            str(products[0].get("id", "")),
+            (products[0].get("code") or "").strip(),
+            (products[0].get("name") or "").strip(),
+        )
     return "", "", ""
 
 

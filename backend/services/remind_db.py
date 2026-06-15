@@ -89,14 +89,14 @@ def delete_webhook(id: str) -> None:
 
 
 def find_webhook_for_product(product_name: str) -> dict | None:
-    """Case-insensitive match; fallback is_default=true."""
+    """Case-insensitive + trimmed match; fallback is_default=true."""
     if not _check_sb():
         return None
     webhooks = get_webhooks()
-    name_lower = product_name.lower()
-    # Exact case-insensitive match
+    name_lower = (product_name or "").strip().lower()
+    # Exact match — strip + lower cả 2 phía để tránh trailing whitespace mismatch
     for w in webhooks:
-        if (w.get("product_name") or "").lower() == name_lower:
+        if ((w.get("product_name") or "").strip().lower()) == name_lower:
             return w
     # Fallback: default webhook
     for w in webhooks:
