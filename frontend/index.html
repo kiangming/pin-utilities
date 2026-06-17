@@ -954,6 +954,16 @@ const FEATURES = [
   { key: 'appsflyer', name: 'AppsFlyer', icon: '📊', color: '#2dd4bf',
     isEnabled: d => d && Object.keys(d).length > 0,
     summary: d => `session time: ${d?.appsflyer_time_session ?? '—'}s` },
+  // Force Protect Guest — `force` (top-level scalar) + sibling `force_count`
+  { key: 'force', name: 'Force Protect Guest', icon: '🛡', color: '#f59e0b',
+    isEnabled: d => d === 1,
+    summary: (d, cfg) => `force_count: ${cfg?.force_count ?? '—'}` },
+  { key: 'in_app_message', name: 'In-App Message', icon: '📨', color: '#ec4899',
+    isEnabled: d => d?.show === 1,
+    summary: d => `show: ${d?.show ?? '—'}` },
+  { key: 'app_inbox', name: 'App Inbox', icon: '📬', color: '#06b6d4',
+    isEnabled: d => d?.show === 1,
+    summary: d => `confirm_popup: ${d?.dismiss_config?.show_confirm_popup ?? '—'}, position: ${d?.default_position ?? '—'}` },
 ];
 
 // ── RECENT PILLS ──────────────────────────────────────────────────────────────
@@ -1114,8 +1124,8 @@ function renderSummary() {
     // OR logic across all platforms + all countries
     const slots = ['default', ...currentCountries];
     const anyOn = slots.some(slot =>
-      f.isEnabled(currentConfig?.android?.[slot]?.[f.key]) ||
-      f.isEnabled(currentConfig?.ios?.[slot]?.[f.key])
+      f.isEnabled(currentConfig?.android?.[slot]?.[f.key], currentConfig?.android?.[slot]) ||
+      f.isEnabled(currentConfig?.ios?.[slot]?.[f.key], currentConfig?.ios?.[slot])
     );
     if (anyOn) enabled++; else disabled++;
   });
@@ -1142,8 +1152,8 @@ function renderFeatureList() {
     const iDefault = currentConfig?.ios?.default?.[f.key];
 
     // OR logic across all slots cho badge ON/OFF tổng
-    const aEnabled = slots.some(s => f.isEnabled(currentConfig?.android?.[s]?.[f.key]));
-    const iEnabled = slots.some(s => f.isEnabled(currentConfig?.ios?.[s]?.[f.key]));
+    const aEnabled = slots.some(s => f.isEnabled(currentConfig?.android?.[s]?.[f.key], currentConfig?.android?.[s]));
+    const iEnabled = slots.some(s => f.isEnabled(currentConfig?.ios?.[s]?.[f.key], currentConfig?.ios?.[s]));
     const anyEnabled = aEnabled || iEnabled;
 
     const aBadge = `<span style="display:inline-flex;align-items:center;gap:3px;color:${aEnabled?'#3DDC84':'#3d4270'};" title="Android ${aEnabled?'ON':'OFF'}">${androidIcon(11)}</span>`;
@@ -1153,8 +1163,8 @@ function renderFeatureList() {
     let countryLine = '';
     if (currentCountries.length > 0) {
       const countryPills = currentCountries.map(c => {
-        const caOn = f.isEnabled(currentConfig?.android?.[c]?.[f.key]);
-        const ciOn = f.isEnabled(currentConfig?.ios?.[c]?.[f.key]);
+        const caOn = f.isEnabled(currentConfig?.android?.[c]?.[f.key], currentConfig?.android?.[c]);
+        const ciOn = f.isEnabled(currentConfig?.ios?.[c]?.[f.key], currentConfig?.ios?.[c]);
         const cOn = caOn || ciOn;
         return `<span style="font-size:10px;padding:1px 6px;border-radius:8px;font-family:'JetBrains Mono',monospace;background:${cOn?'rgba(74,222,128,0.1)':'rgba(248,113,113,0.08)'};border:1px solid ${cOn?'rgba(74,222,128,0.25)':'rgba(248,113,113,0.2)'};color:${cOn?'var(--green)':'var(--text3)'};">${c}</span>`;
       }).join('');
@@ -1175,7 +1185,7 @@ function renderFeatureList() {
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
-        <div class="card-summary" style="font-size:11px;">${f.summary(aDefault || iDefault)}</div>
+        <div class="card-summary" style="font-size:11px;">${f.summary(aDefault || iDefault, currentConfig?.android?.default || currentConfig?.ios?.default)}</div>
         <div style="display:inline-flex;align-items:center;gap:5px;flex-shrink:0;margin-left:8px;">${aBadge}${iBadge}</div>
       </div>
       ${countryLine}`;
@@ -1203,12 +1213,12 @@ function selectFeature(key, platform, country) {
   const curData = currentConfig?.[curPlatform]?.[curCountry]?.[key];
 
   // Tính enabled trạng thái cho từng platform (OR across all countries)
-  const aEnabled = slots.some(s => f.isEnabled(currentConfig?.android?.[s]?.[key]));
-  const iEnabled = slots.some(s => f.isEnabled(currentConfig?.ios?.[s]?.[key]));
+  const aEnabled = slots.some(s => f.isEnabled(currentConfig?.android?.[s]?.[key], currentConfig?.android?.[s]));
+  const iEnabled = slots.some(s => f.isEnabled(currentConfig?.ios?.[s]?.[key], currentConfig?.ios?.[s]));
   const anyEnabled = aEnabled || iEnabled;
 
   // enabled cho platform đang chọn ở country đang chọn
-  const curEnabled = f.isEnabled(curData);
+  const curEnabled = f.isEnabled(curData, currentConfig?.[curPlatform]?.[curCountry]);
 
   const tabStyle = (active) => active
     ? 'background:rgba(108,99,255,0.15);border-bottom:2px solid var(--accent);color:#fff;'
@@ -1219,7 +1229,7 @@ function selectFeature(key, platform, country) {
   if (currentCountries.length > 0) {
     const countryBtns = ['default', ...currentCountries].map(c => {
       const cData = currentConfig?.[curPlatform]?.[c]?.[key];
-      const cEnabled = f.isEnabled(cData);
+      const cEnabled = f.isEnabled(cData, currentConfig?.[curPlatform]?.[c]);
       const isActive = c === curCountry;
       const label = c === 'default' ? '🌐 Default' : c;
       return `<button onclick="selectFeature('${key}','${curPlatform}','${c}')"
@@ -1452,6 +1462,9 @@ const FEATURE_COLS = [
   {key:'bann',label:'Ban'},{key:'notify',label:'Notify'},{key:'local_push',label:'Push'},
   {key:'login_channel',label:'Login'},{key:'translate',label:'Trans'},
   {key:'secure_account_status',label:'Secure'},{key:'vn_policy_13',label:'Policy'},{key:'appsflyer',label:'AF'},
+  {key:'force',label:'Force Protect Guest'},
+  {key:'in_app_message',label:'In-App Message'},
+  {key:'app_inbox',label:'App Inbox'},
 ];
 
 function onBatchFileSelected(input) {

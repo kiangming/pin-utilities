@@ -13,14 +13,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 _batch_jobs: dict[str, dict] = {}
 
 FEATURE_KEYS = [
-    {"key": "bann",                  "name": "Ban Check",      "isEnabled": lambda d: isinstance(d, dict) and d.get("banned") == "true"},
-    {"key": "notify",                "name": "Notify",         "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == "true"},
-    {"key": "local_push",            "name": "Local Push",     "isEnabled": lambda d: isinstance(d, dict) and len(d.get("data", [])) > 0},
-    {"key": "login_channel",         "name": "Login Channel",  "isEnabled": lambda d: isinstance(d, dict) and len(d.get("list", [])) > 0},
-    {"key": "translate",             "name": "Translate",      "isEnabled": lambda d: isinstance(d, dict) and d.get("type") == 1},
-    {"key": "secure_account_status", "name": "Secure Account", "isEnabled": lambda d: d == 1},
-    {"key": "vn_policy_13",          "name": "VN Policy 13",   "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == 1},
-    {"key": "appsflyer",             "name": "AppsFlyer",      "isEnabled": lambda d: isinstance(d, dict) and len(d) > 0},
+    {"key": "bann",                  "name": "Ban Check",            "isEnabled": lambda d: isinstance(d, dict) and d.get("banned") == "true"},
+    {"key": "notify",                "name": "Notify",               "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == "true"},
+    {"key": "local_push",            "name": "Local Push",           "isEnabled": lambda d: isinstance(d, dict) and len(d.get("data", [])) > 0},
+    {"key": "login_channel",         "name": "Login Channel",        "isEnabled": lambda d: isinstance(d, dict) and len(d.get("list", [])) > 0},
+    {"key": "translate",             "name": "Translate",            "isEnabled": lambda d: isinstance(d, dict) and d.get("type") == 1},
+    {"key": "secure_account_status", "name": "Secure Account",       "isEnabled": lambda d: d == 1},
+    {"key": "vn_policy_13",          "name": "VN Policy 13",         "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == 1},
+    {"key": "appsflyer",             "name": "AppsFlyer",            "isEnabled": lambda d: isinstance(d, dict) and len(d) > 0},
+    {"key": "force",                 "name": "Force Protect Guest",  "isEnabled": lambda d: d == 1},
+    {"key": "in_app_message",        "name": "In-App Message",       "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == 1},
+    {"key": "app_inbox",             "name": "App Inbox",            "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == 1},
 ]
 
 
