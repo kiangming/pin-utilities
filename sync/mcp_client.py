@@ -1,5 +1,5 @@
 """
-MCP API client — gọi tool sdk_version_snapshot qua MCP Streamable HTTP (JSON-RPC 2.0).
+MCP API client — gọi tool sdk___version_snapshot qua MCP Streamable HTTP (JSON-RPC 2.0).
 
 Server: https://mcp-gateway.gio.vng.vn/mcp
 Auth:   OAuth 2.0 Client Credentials — access_token lấy từ oauth_client.get_token()
@@ -152,7 +152,7 @@ def fetch_sdk_snapshot(game_id: str, platform: Optional[str] = None) -> List[Dic
         arguments["platform"] = platform
 
     response = _call_jsonrpc("tools/call", {
-        "name": "sdk_version_snapshot",
+        "name": "sdk___version_snapshot",
         "arguments": arguments,
     })
     return _extract_records(response)
@@ -164,7 +164,7 @@ def fetch_sdk_snapshot_all() -> List[Dict]:
     Trả về list records (mỗi record = 1 game × 1 platform).
     """
     response = _call_jsonrpc("tools/call", {
-        "name": "sdk_version_snapshot",
+        "name": "sdk___version_snapshot",
         "arguments": {},
     })
     return _extract_records(response)
