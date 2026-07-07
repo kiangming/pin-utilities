@@ -27,11 +27,14 @@ FEATURE_KEYS = [
 ]
 
 
-def fetch_config(game_id: str, platform: str, country: str | None = None) -> tuple[dict | None, str | None]:
-    """Fetch Bootstrap config cho 1 game + platform + country."""
+def fetch_config(game_id: str, platform: str, country: str | None = None,
+                 sdk_version: str | None = None) -> tuple[dict | None, str | None]:
+    """Fetch Bootstrap config cho 1 game + platform + country + sdk_version."""
     url = f"https://login-{game_id}.vnggames.net/?do=Bootstrap.show&os={platform}"
     if country:
         url += f"&country={country}"
+    if sdk_version:
+        url += f"&sdk_version={sdk_version}"
     cmd = [
         "curl", "-s", "-L", "--max-time", "10",
         "-A", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",

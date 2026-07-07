@@ -21,15 +21,16 @@ async def get_config(
     gameId: str = Query(...),
     platform: str = Query("android"),
     country: str | None = Query(None),
+    sdk_version: str | None = Query(None),
     _session: SessionData = Depends(require_session),
 ):
     if platform not in ("android", "ios"):
         platform = "android"
-    data, err = bootstrap_service.fetch_config(gameId, platform, country)
+    data, err = bootstrap_service.fetch_config(gameId, platform, country, sdk_version)
     if err:
         raise HTTPException(502, detail=err)
     return JSONResponse({"success": True, "gameId": gameId, "platform": platform,
-                         "country": country, "data": data})
+                         "country": country, "sdk_version": sdk_version, "data": data})
 
 
 @router.post("/batch")

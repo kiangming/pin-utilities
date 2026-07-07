@@ -475,7 +475,7 @@
   <div class="selector-row">
     <div class="game-input-wrap">
       <span>https://login-</span>
-      <input class="game-input" id="gameIdInput" placeholder="demovn" value="" />
+      <input class="game-input" id="gameIdInput" placeholder="demovn" value="" oninput="clearSdkVersionInputs()" />
       <span>.vnggames.net/?do=Bootstrap.show</span>
     </div>
     <button class="btn-fetch" id="fetchBtn" onclick="fetchConfig()">Fetch Config</button>
@@ -494,6 +494,45 @@
         onblur="this.style.borderColor='var(--border2)'" />
     </div>
     <div id="countryPreviewPills" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+  </div>
+
+  <!-- SDK Version rows (per platform) -->
+  <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+    <span style="font-size:11px;color:var(--text3);white-space:nowrap;font-weight:600;text-transform:uppercase;letter-spacing:.6px;">📱 SDK Version</span>
+  </div>
+  <div id="sdkVersionAndroidRow" style="display:flex;align-items:center;gap:6px;margin-top:6px;margin-left:24px;flex-wrap:wrap;">
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);cursor:pointer;min-width:88px;">
+      <input type="checkbox" id="sdkVersionEnabled_android" onchange="toggleSdkVersionPlatform('android')">
+      <span>Android</span>
+    </label>
+    <span style="font-size:11px;color:var(--text3);">Name</span>
+    <input id="sdkVersionName_android" class="sdk-version-input"
+      style="width:140px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace;outline:none;opacity:.4;transition:border-color .15s,opacity .15s;"
+      placeholder="e.g. 4.2.1" disabled
+      oninput="renderSdkVersionPreview()" />
+    <span style="font-size:11px;color:var(--text3);">Code</span>
+    <input id="sdkVersionCode_android" class="sdk-version-input"
+      style="width:100px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace;outline:none;opacity:.4;transition:border-color .15s,opacity .15s;"
+      placeholder="e.g. 421" disabled
+      oninput="renderSdkVersionPreview()" />
+    <span id="sdkVersionPreview_android" style="font-size:11px;color:var(--text3);"></span>
+  </div>
+  <div id="sdkVersionIosRow" style="display:flex;align-items:center;gap:6px;margin-top:6px;margin-left:24px;flex-wrap:wrap;">
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);cursor:pointer;min-width:88px;">
+      <input type="checkbox" id="sdkVersionEnabled_ios" onchange="toggleSdkVersionPlatform('ios')">
+      <span>iOS</span>
+    </label>
+    <span style="font-size:11px;color:var(--text3);">Name</span>
+    <input id="sdkVersionName_ios" class="sdk-version-input"
+      style="width:140px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace;outline:none;opacity:.4;transition:border-color .15s,opacity .15s;"
+      placeholder="e.g. 4.2.0" disabled
+      oninput="renderSdkVersionPreview()" />
+    <span style="font-size:11px;color:var(--text3);">Code</span>
+    <input id="sdkVersionCode_ios" class="sdk-version-input"
+      style="width:100px;background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);font-family:'JetBrains Mono',monospace;outline:none;opacity:.4;transition:border-color .15s,opacity .15s;"
+      placeholder="e.g. 420" disabled
+      oninput="renderSdkVersionPreview()" />
+    <span id="sdkVersionPreview_ios" style="font-size:11px;color:var(--text3);"></span>
   </div>
 
   <div class="recent-pills" id="recentPills">
@@ -892,6 +931,90 @@ function renderCountryPreview() {
   ).join('');
 }
 
+// ── SDK Version helpers ───────────────────────────────────────────────────────
+function toggleSdkVersionPlatform(platform) {
+  const enabled = document.getElementById(`sdkVersionEnabled_${platform}`)?.checked;
+  ['Name', 'Code'].forEach(field => {
+    const el = document.getElementById(`sdkVersion${field}_${platform}`);
+    if (!el) return;
+    el.disabled = !enabled;
+    el.style.opacity = enabled ? '1' : '.4';
+    if (!enabled) el.value = '';
+  });
+  renderSdkVersionPreview();
+}
+
+function getSdkVersionFor(platform) {
+  const enabled = document.getElementById(`sdkVersionEnabled_${platform}`)?.checked;
+  if (!enabled) return null;
+  const name = (document.getElementById(`sdkVersionName_${platform}`)?.value || '').trim();
+  const code = (document.getElementById(`sdkVersionCode_${platform}`)?.value || '').trim();
+  return (name && code) ? `${name}_${code}` : null;
+}
+
+function validateSdkVersion() {
+  const errors = [];
+  ['android', 'ios'].forEach(p => {
+    const enabled = document.getElementById(`sdkVersionEnabled_${p}`)?.checked;
+    if (!enabled) return;
+    const name = (document.getElementById(`sdkVersionName_${p}`)?.value || '').trim();
+    const code = (document.getElementById(`sdkVersionCode_${p}`)?.value || '').trim();
+    if ((name && !code) || (!name && code)) {
+      errors.push({ platform: p, missing: name ? 'code' : 'name' });
+    }
+  });
+  return { ok: errors.length === 0, errors };
+}
+
+function renderSdkVersionPreview() {
+  ['android', 'ios'].forEach(p => {
+    const previewEl = document.getElementById(`sdkVersionPreview_${p}`);
+    const nameEl = document.getElementById(`sdkVersionName_${p}`);
+    const codeEl = document.getElementById(`sdkVersionCode_${p}`);
+    if (!previewEl || !nameEl || !codeEl) return;
+    const enabled = document.getElementById(`sdkVersionEnabled_${p}`)?.checked;
+    if (!enabled) {
+      previewEl.textContent = '';
+      nameEl.style.borderColor = 'var(--border2)';
+      codeEl.style.borderColor = 'var(--border2)';
+      return;
+    }
+    const name = (nameEl.value || '').trim();
+    const code = (codeEl.value || '').trim();
+    if (!name && !code) {
+      previewEl.innerHTML = `<span style="color:var(--text3);">(chưa nhập)</span>`;
+      nameEl.style.borderColor = 'var(--border2)';
+      codeEl.style.borderColor = 'var(--border2)';
+    } else if (!name || !code) {
+      previewEl.innerHTML = `<span style="color:#fbbf24;">⚠ Cần cả Name + Code</span>`;
+      nameEl.style.borderColor = name ? 'var(--border2)' : '#f87171';
+      codeEl.style.borderColor = code ? 'var(--border2)' : '#f87171';
+    } else {
+      previewEl.innerHTML = `<span style="color:#4ade80;">✓ ${name}_${code}</span>`;
+      nameEl.style.borderColor = 'var(--border2)';
+      codeEl.style.borderColor = 'var(--border2)';
+    }
+  });
+  // Cập nhật Fetch button state
+  const fetchBtn = document.getElementById('fetchBtn');
+  if (fetchBtn) {
+    const v = validateSdkVersion();
+    fetchBtn.disabled = !v.ok;
+    fetchBtn.style.opacity = v.ok ? '1' : '.5';
+    fetchBtn.style.cursor = v.ok ? 'pointer' : 'not-allowed';
+  }
+}
+
+function clearSdkVersionInputs() {
+  ['android', 'ios'].forEach(p => {
+    const n = document.getElementById(`sdkVersionName_${p}`);
+    const c = document.getElementById(`sdkVersionCode_${p}`);
+    if (n) n.value = '';
+    if (c) c.value = '';
+  });
+  renderSdkVersionPreview();
+}
+
 // Render preview pills cho Batch section
 function renderBatchCountryPreview() {
   const raw = document.getElementById('batchCountryInput')?.value || '';
@@ -974,7 +1097,7 @@ function renderRecentPills() {
     const pill = document.createElement('span');
     pill.className = 'pill';
     pill.textContent = g;
-    pill.onclick = () => { document.getElementById('gameIdInput').value = g; fetchConfig(); };
+    pill.onclick = () => { document.getElementById('gameIdInput').value = g; clearSdkVersionInputs(); fetchConfig(); };
     container.appendChild(pill);
   });
 }
@@ -993,10 +1116,20 @@ async function fetchConfig() {
   const gameId = document.getElementById('gameIdInput').value.trim();
   if (!gameId) { setStatus('error', 'Please enter a Game ID'); return; }
 
+  const v = validateSdkVersion();
+  if (!v.ok) {
+    const missing = v.errors.map(e => `${e.platform} thiếu ${e.missing}`).join(', ');
+    setStatus('error', `SDK Version chưa hợp lệ: ${missing}`);
+    return;
+  }
+
   const countryRaw = document.getElementById('countryInput')?.value || '';
   const countries = parseCountries(countryRaw);  // [] nếu không nhập
   currentCountries = countries;
   selectedDetailCountry = 'default';
+
+  const sdkVersionAndroid = getSdkVersionFor('android');
+  const sdkVersionIos     = getSdkVersionFor('ios');
 
   const btn = document.getElementById('fetchBtn');
   btn.disabled = true;
@@ -1005,9 +1138,10 @@ async function fetchConfig() {
   setStatus('loading', `Fetching Android + iOS${countryLabel} config for "${gameId}"…`);
 
   // fetch một platform + country combination
-  async function fetchOne(platform, country) {
+  async function fetchOne(platform, country, sdkVersion) {
     let url = `${PROXY}/api/config?gameId=${encodeURIComponent(gameId)}&platform=${platform}`;
     if (country) url += `&country=${encodeURIComponent(country)}`;
+    if (sdkVersion) url += `&sdk_version=${encodeURIComponent(sdkVersion)}`;
     try {
       const res = await fetch(url);
       const json = await res.json();
@@ -1027,9 +1161,10 @@ async function fetchConfig() {
     const slots = ['default', ...countries];
     const platforms = ['android', 'ios'];
 
-    // Fetch tất cả song song
+    // Fetch tất cả song song — mỗi platform dùng sdk_version riêng
+    const sdkVersionMap = { android: sdkVersionAndroid, ios: sdkVersionIos };
     const allResults = await Promise.all(
-      platforms.flatMap(p => slots.map(slot => fetchOne(p, slot === 'default' ? null : slot).then(r => ({ p, slot, ...r }))))
+      platforms.flatMap(p => slots.map(slot => fetchOne(p, slot === 'default' ? null : slot, sdkVersionMap[p]).then(r => ({ p, slot, ...r }))))
     );
 
     // Build currentConfig = { android: { default: {...}, VN: {...} }, ios: { default: {...}, VN: {...} } }
