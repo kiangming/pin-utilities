@@ -26,7 +26,11 @@ class Settings(BaseSettings):
     ticket_api_client_secret: str = ""
     debug_ticket_api: bool = False
 
+    # Ticket Tools — Kill switch (false = tool disabled, all /api/remind/* → 404)
+    ticket_tool_enabled: bool = False
+
     # Ticket Tools — Access Control (comma-separated emails; empty = deny all)
+    # Chỉ có tác dụng khi ticket_tool_enabled=true
     ticket_tool_allowed_emails: str = ""
 
     # Server — Railway inject PORT tự động

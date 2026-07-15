@@ -43,7 +43,8 @@ app.include_router(auth.router)
 app.include_router(bootstrap.router)
 app.include_router(sheets.router)
 app.include_router(sdk_versions.router)
-app.include_router(remind.router)
+if settings.ticket_tool_enabled:
+    app.include_router(remind.router)
 
 
 # ── Frontend routes ────────────────────────────────────────────────────────────
