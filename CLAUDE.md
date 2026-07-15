@@ -576,6 +576,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.8.5** | **Apr 2026** | **Thêm `{tagged_commenter}`, `{tagged_requester}`, `{ticket_link}` placeholders; send_mention_message nhận list[dict] hỗ trợ multi-mention** |
 | **v4.8.6** | **May 2026** | **Fix Remind Config tabs không scroll khi list dài: `.tkr-tab-content` đổi `overflow:visible` → `overflow-y:auto`** |
 | **v4.8.7** | **May 2026** | **Fix `{tagged_requester}` tag được; bỏ DB lookup cho handler mention (dùng thẳng `ticket.handler.username`); orphan/dedup check trên `msteams.entities`** |
+| **v4.8.8** | **Jul 2026** | **Ticket Tools kill switch: env `TICKET_TOOL_ENABLED` (default false) → router không register, tất cả `/api/remind/*` → 404, nav ẩn. Code + data giữ nguyên** |
 
 ### v4.0 chi tiết
 - **Backend:** FastAPI, sessions file-based, Google OAuth Authorization Code Flow, TTLCache Sheets, Bootstrap proxy
@@ -839,7 +840,7 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ---
 
-## 18. Tool 5: Ticket Reminder — v4.8.7
+## 18. Tool 5: Ticket Reminder — v4.8.8 (currently DISABLED via kill switch)
 
 > Status: **Implemented & Deployed**
 
@@ -983,6 +984,8 @@ Array params trong URL: PHP-style `key[]=val1&key[]=val2` (không phải `key=va
 ### 18.8 Config (env vars)
 
 ```
+TICKET_TOOL_ENABLED=false            (v4.8.8 kill switch — false = router không register, mọi /api/remind/* → 404)
+TICKET_TOOL_ALLOWED_EMAILS=          (comma-separated emails, empty = deny all; chỉ dùng khi ENABLED=true)
 TICKET_API_BASE_URL=https://ticket.vnggames.net/integration/v1
 TICKET_API_CLIENT_ID=...
 TICKET_API_CLIENT_SECRET=...
@@ -1062,6 +1065,7 @@ RESPONSE 200
 | **AX-41** | `requester_login` đọc từ `ticket.requester.username` (Nexus API trả `username`, không phải `login`). Tương tự `assignee_username` đọc từ `ticket.handler.username` |
 | **AX-42** | Handler mention build từ `ticket.assignee_username` trực tiếp — KHÔNG lookup DB `handler_usernames`. Table này chỉ dùng cho `is_need_remind` check (comment author) và CRUD UI |
 | **AX-43** | Mention chỉ add vào `msteams.entities` nếu `<at>Name</at>` thực sự có trong rendered message (tránh orphan entity). Dedup theo `mention.id` để tránh duplicate khi handler == commenter |
+| **AX-44** | `remind.router` register có điều kiện qua `settings.ticket_tool_enabled` — KHÔNG bypass hoặc always-include. Mặc định OFF trên production trừ khi có business need |
 
 ### v4.8.4 chi tiết
 - **Tag handler trong Teams message** — gắn mention `<at>Name</at>` vào remind message
@@ -1088,6 +1092,16 @@ RESPONSE 200
 - **Fix**: đổi sang `overflow-y: auto; overflow-x: visible` — mỗi tab tự scroll dọc khi content vượt height
 - **Không ảnh hưởng product picker**: `#tkr-body-product-panel` được append vào `<body>` với `position:fixed`, thoát mọi overflow context của ancestor
 - **Bump cache**: `ticket-reminder.css?v=1.0` → `?v=1.1`
+
+### v4.8.8 chi tiết
+- **Kill switch env `TICKET_TOOL_ENABLED`** (default `false`):
+  - `false` → `remind.router` KHÔNG được register trong [main.py](backend/main.py) → mọi `/api/remind/*` URL trả **404**
+  - Frontend `ApiClient.get('/api/remind/access')` → 404 → `.catch()` chạy → nav "Ticket Tools" giữ ẩn (default `display:none;`)
+  - Code (`backend/routers/remind.py`, `services/*.py`, `frontend/js/ticket-reminder.js`, `css/ticket-reminder.css`) giữ nguyên
+  - Data Supabase (`webhook_configs`, `remind_templates`, `handler_usernames`, `remind_logs`, `products`, `services`, `ticket_statuses`) giữ nguyên
+- **Reactivate**: Set Railway env `TICKET_TOOL_ENABLED=true` → redeploy → tool hoạt động lại như v4.8.7. `TICKET_TOOL_ALLOWED_EMAILS` vẫn được dùng để gate per-user (đã hoạt động chỉ khi tool enabled)
+- **Files thay đổi**: [config.py](backend/config.py) (thêm setting), [main.py](backend/main.py) (`if settings.ticket_tool_enabled: include_router`), [.env.example](.env.example)
+- **Trade-off**: khi disabled, browser Network tab sẽ show `GET /api/remind/access → 404` (1 request/load) — không có Console error (đã catch), harmless
 
 ### v4.8.7 chi tiết
 - **API field name correction**: Nexus `/tickets` trả `requester`/`handler` với fields `{id, name, username}` — KHÔNG phải `{id, login, fullname}` như doc cũ ghi

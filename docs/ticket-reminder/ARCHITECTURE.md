@@ -338,7 +338,12 @@ Nếu không có code: `{product_id} - [{product_name}]`
 ## 7. Environment Variables (Railway)
 
 ```env
-# Nexus Ticket API
+# v4.8.8 KILL SWITCH — false = router không register, mọi /api/remind/* → 404
+# false: tool hoàn toàn disabled, code/data giữ nguyên. Nav "Ticket Tools" ẩn.
+# true:  tool hoạt động bình thường, kết hợp với TICKET_TOOL_ALLOWED_EMAILS để phân quyền
+TICKET_TOOL_ENABLED=false
+
+# Nexus Ticket API (chỉ có tác dụng khi TICKET_TOOL_ENABLED=true)
 TICKET_API_BASE_URL=https://ticket.vnggames.net/integration/v1
 TICKET_API_CLIENT_ID=...
 TICKET_API_CLIENT_SECRET=...
@@ -351,12 +356,27 @@ SUPABASE_SERVICE_KEY=...
 DEBUG_TICKET_API=false
 
 # Access control — comma-separated emails; empty string = deny all
+# Chỉ có tác dụng khi TICKET_TOOL_ENABLED=true
 TICKET_TOOL_ALLOWED_EMAILS=user1@company.com,user2@company.com
 ```
 
 ---
 
 ## 8. Access Control
+
+### 8.0 Kill switch — `TICKET_TOOL_ENABLED` (v4.8.8, highest priority)
+
+```python
+# backend/main.py
+if settings.ticket_tool_enabled:
+    app.include_router(remind.router)
+```
+
+- Default `false` → router KHÔNG register → mọi `/api/remind/*` URL trả **HTTP 404**
+- Frontend `/api/remind/access` cũng 404 → `.catch()` → nav ẩn (không hiện)
+- Bypass hoàn toàn cơ chế `require_ticket_access` bên dưới vì endpoint không tồn tại
+- Code + data (7 Supabase tables) giữ nguyên — chỉ cần `TICKET_TOOL_ENABLED=true` để reactivate
+- **KHÔNG được** bypass hoặc always-include router (AX-44)
 
 ### 8.1 Backend — `require_ticket_access` dependency
 
