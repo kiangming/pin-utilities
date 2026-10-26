@@ -1087,6 +1087,15 @@ const FEATURES = [
   { key: 'app_inbox', name: 'App Inbox', icon: '📬', color: '#06b6d4',
     isEnabled: d => d?.show === 1,
     summary: d => `confirm_popup: ${d?.dismiss_config?.show_confirm_popup ?? '—'}, position: ${d?.default_position ?? '—'}` },
+  // Playtime Tracking — thiếu key = chưa deploy (khác với deploy rồi nhưng active:0).
+  // isEnabled phải ĐỒNG NHẤT với bản Python trong FEATURE_KEYS (bootstrap_service.py).
+  // `d == null` bắt cả undefined lẫn null; KHÔNG dùng `!d` (sẽ nuốt luôn giá trị 0).
+  { key: 'ping_playing_time', name: 'Playtime Tracking', icon: '⏱️', color: '#84cc16',
+    missingNote: 'not have been deployed yet',
+    isEnabled: d => Number(d?.active) === 1,
+    summary: d => d == null
+      ? '<span style="color:var(--yellow);font-style:italic;">⚠ not have been deployed yet</span>'
+      : `interval: ${d?.interval ?? '—'}${d?.interval ? 's' : ''}` },
 ];
 
 // ── RECENT PILLS ──────────────────────────────────────────────────────────────
@@ -1422,7 +1431,11 @@ function selectFeature(key, platform, country) {
 
 // ── FEATURE DETAIL RENDERERS ──────────────────────────────────────────────────
 function renderFeatureDetail(key, data, f, platform) {
-  if (!data && data !== 0) return `<div class="section"><div style="color:var(--text3);font-size:13px;">No configuration found for this feature.</div></div>`;
+  if (!data && data !== 0) {
+    // Feature khai `missingNote` để phân biệt "chưa deploy" với "deploy rồi nhưng tắt".
+    const note = f?.missingNote || 'No configuration found for this feature.';
+    return `<div class="section"><div style="color:var(--text3);font-size:13px;">${note}</div></div>`;
+  }
 
   const channelColors = { AP:'#4f46e5',GG:'#dc2626',FB:'#1d4ed8',ZM:'#0891b2',EM:'#059669',GGID:'#16a34a',GU:'#9333ea',PA:'#d97706',RA:'#db2777' };
 
@@ -1556,6 +1569,16 @@ function renderFeatureDetail(key, data, f, platform) {
         </div>
       </div>`;
 
+    case 'ping_playing_time': return `
+      <div class="section">
+        <div class="section-title">Configuration</div>
+        <div class="kv-table">
+          ${kv('Active', Number(data.active)===1 ? '✅ 1 (enabled)' : `❌ ${data.active ?? '—'} (disabled)`, 'mono')}
+          ${kv('Interval', (data.interval ?? '—') + (data.interval ? 's' : '')
+               + (Number(data.active)===1 && !data.interval ? ' ⚠️ active nhưng thiếu interval' : ''), 'mono')}
+        </div>
+      </div>`;
+
     default:
       return `<div class="section"><pre style="display:block">${escapeHTML(JSON.stringify(data, null, 2))}</pre></div>`;
   }
@@ -1600,6 +1623,7 @@ const FEATURE_COLS = [
   {key:'force',label:'Force Protect Guest'},
   {key:'in_app_message',label:'In-App Message'},
   {key:'app_inbox',label:'App Inbox'},
+  {key:'ping_playing_time',label:'Playtime'},
 ];
 
 function onBatchFileSelected(input) {
@@ -1708,7 +1732,7 @@ function renderFeatureStats(stats, total) {
   else if (sort==='enabled-asc') entries.sort((a,b)=>a.enabledCount-b.enabledCount);
   else entries.sort((a,b)=>a.name.localeCompare(b.name));
 
-  const icons = {'Ban Check':'🛡️','Notify':'🔔','Local Push':'📲','Login Channel':'🔐','Translate':'🌐','Secure Account':'🔒','VN Policy 13':'📜','AppsFlyer':'📊'};
+  const icons = {'Ban Check':'🛡️','Notify':'🔔','Local Push':'📲','Login Channel':'🔐','Translate':'🌐','Secure Account':'🔒','VN Policy 13':'📜','AppsFlyer':'📊','Playtime Tracking':'⏱️'};
   const countries = batchJobData?.countries || [];
 
   // ── BUILD THEAD DYNAMICALLY ───────────────────────────────────────────────

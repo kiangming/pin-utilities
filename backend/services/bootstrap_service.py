@@ -24,6 +24,10 @@ FEATURE_KEYS = [
     {"key": "force",                 "name": "Force Protect Guest",  "isEnabled": lambda d: d == 1},
     {"key": "in_app_message",        "name": "In-App Message",       "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == 1},
     {"key": "app_inbox",             "name": "App Inbox",            "isEnabled": lambda d: isinstance(d, dict) and d.get("show") == 1},
+    # Playtime Tracking — thiếu key = Disable. Nhận cả 1 và "1": Bootstrap API
+    # đã từng trả boolean dạng chuỗi (xem bann.banned, notify.show).
+    # Giữ vị từ này ĐỒNG NHẤT với bản JS trong FEATURES (frontend/index.html).
+    {"key": "ping_playing_time",     "name": "Playtime Tracking",    "isEnabled": lambda d: isinstance(d, dict) and d.get("active") in (1, "1")},
 ]
 
 
