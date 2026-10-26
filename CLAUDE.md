@@ -54,7 +54,7 @@ PIN/
 │   ├── requirements.txt         ← httpx, python-dotenv
 │   ├── .gitignore               ← exclude data/, .env, *.log
 │   ├── data/                    ← Intermediate files (gitignored, overwrite mỗi lần chạy)
-│   │   ├── game_list.json       ← Output bước 1: list game ACTIVE/NOT_RELEASED
+│   │   ├── game_list.json       ← Output bước 1: list game Operating/New
 │   │   └── snapshot_data.json   ← Output bước 2: full snapshot từ MCP
 │   └── .env                     ← MCP_BASE_URL, MCP_BEARER_TOKEN, SUPABASE_URL, SUPABASE_SERVICE_KEY (KHÔNG commit)
 ├── frontend/
@@ -171,7 +171,8 @@ const PROXY = '';  // same-origin — backend FastAPI xử lý /api/*
   - Hover rows: dùng CSS class `.tr-game`, `.tr-feature`, `.tr-country` — KHÔNG dùng inline `onmouseover`
   - Countries từ single source: `batchJobData?.countries`
   - Column order cố định: `Feature | Enabled | Android | iOS | [countries] | Rate | Bar`
-  - Thêm feature mới: chỉ thêm vào arrays `FEATURE_COLS`, `FEATURES` — không sửa HTML tĩnh
+  - Thêm feature mới: **3 nơi BẮT BUỘC** — `FEATURE_KEYS` ([bootstrap_service.py](backend/services/bootstrap_service.py)),
+    `FEATURES` + `FEATURE_COLS` (index.html). Không sửa HTML tĩnh. Xem AX-48
 
 ### Tool 2: SDK Features Statistic
 - **Nav ID:** `tool-batch-stats`
@@ -550,6 +551,9 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **AX-11** | SDK Features Statistic dùng file upload, KHÔNG dùng text input filepath |
 | **AX-12** | `.left-nav` background dùng `var(--nav-bg)`, `.nav-item.active` color dùng `var(--text)` |
 | **AX-13** | Mọi màu UI component chính dùng CSS variables — KHÔNG hardcode hex color |
+| **AX-48** | Thêm feature SDK Config phải sửa **cả 3** nơi: `FEATURE_KEYS` (backend), `FEATURES`, `FEATURE_COLS`. Quên backend ⇒ cột Tool 2 vẫn hiện nhưng `r.features[key]` undefined ⇒ **mọi game báo OFF im lặng**, không crash, không log |
+| **AX-49** | `isEnabled` tồn tại 2 bản (JS + Python) cho mỗi feature — phải ĐỒNG NHẤT. Lệch ⇒ Tool 1 báo ON còn Tool 2 báo OFF cho cùng game, không có gì phát hiện. Viết vị từ đơn giản nhất có thể, đừng "tối ưu" một bên |
+| **AX-50** | Feature cần phân biệt "chưa deploy" với "deploy rồi nhưng tắt" thì khai `missingNote` trong `FEATURES` — guard đầu `renderFeatureDetail()` tự dùng. KHÔNG sửa câu mặc định (11 feature cũ đang dựa vào nó) |
 
 ---
 
@@ -576,6 +580,9 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 | **v4.8.5** | **Apr 2026** | **Thêm `{tagged_commenter}`, `{tagged_requester}`, `{ticket_link}` placeholders; send_mention_message nhận list[dict] hỗ trợ multi-mention** |
 | **v4.8.6** | **May 2026** | **Fix Remind Config tabs không scroll khi list dài: `.tkr-tab-content` đổi `overflow:visible` → `overflow-y:auto`** |
 | **v4.8.7** | **May 2026** | **Fix `{tagged_requester}` tag được; bỏ DB lookup cho handler mention (dùng thẳng `ticket.handler.username`); orphan/dedup check trên `msteams.entities`** |
+| **v4.8.11** | **Oct 2026** | **SDK Config: thêm feature "Playtime Tracking" (`ping_playing_time`) — tri-state ON / OFF / chưa deploy** |
+| **v4.8.10** | **Oct 2026** | **Sync bỏ qua record `platform` rỗng (DB NOT NULL); kích hoạt `ERROR_THRESHOLD_PCT` làm circuit breaker** |
+| **v4.8.9** | **Sep 2026** | **Fix sync script: `game_list` đổi vocabulary status (`ACTIVE/NOT_RELEASED` → `Operating/New`) khiến filter client-side loại sạch 701/701 dòng; `fields` → `dimensions`; bỏ fallback `product_code`** |
 | **v4.8.8** | **Jul 2026** | **Ticket Tools kill switch: env `TICKET_TOOL_ENABLED` (default false) → router không register, tất cả `/api/remind/*` → 404, nav ẩn. Code + data giữ nguyên** |
 
 ### v4.0 chi tiết
@@ -682,7 +689,7 @@ Set env vars trên Railway dashboard: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
 ```
 sync/ (chạy thủ công / cron, KHÔNG deploy Railway)
   run_sync.py
-    1. fetch_game_list()        → MCP "game_list" (ACTIVE/NOT_RELEASED) → data/game_list.json
+    1. fetch_game_list()        → MCP "game_list" (status Operating/New) → data/game_list.json
     2. fetch_sdk_snapshot_all() → MCP "sdk_version_snapshot" (no filter) → data/snapshot_data.json
     3. Map & filter             → loại bỏ records không có trong game_list
     4. upsert_batch()           → Supabase REST API (merge-duplicates, on_conflict=game_id,platform)
@@ -702,8 +709,11 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 
 ### 16.3 Sync script — mcp_client.py
 - MCP transport: JSON-RPC 2.0 over HTTP POST, supports SSE response parsing
-- `fetch_game_list()`: gọi tool `game_list`, filter ACTIVE/NOT_RELEASED
-  - game_id fallback: `game_id → product_code → id → gameId` (MCP thường trả `game_id: null`, ID thực ở `product_code`)
+- `fetch_game_list()`: gọi tool `game_list` với `arguments.status = ["Operating", "New"]` (lọc server-side, 701 → 181 dòng)
+  - `dimensions = ["game_id", "product_name", "status"]` — param đúng của tool (không phải `fields`)
+  - game_id: dùng thẳng `game_id` (nexus package_id slug, vd `antvn`) — khớp key của `sdk___version_snapshot`
+  - Bỏ qua bản ghi không có `game_id` (sản phẩm phi-game: VNGGames Loyalty, CSM, GS9 Global Web Server…)
+  - Dedup theo `game_id`: 1 game_id có thể gắn nhiều product theo market → 181 dòng còn 122 games
   - product_name: `product_name → name → ""`
 - `fetch_sdk_snapshot_all()`: gọi tool `sdk_version_snapshot` với `arguments: {}` — trả về toàn bộ data
 - `fetch_sdk_snapshot(game_id)`: vẫn giữ lại để dùng riêng lẻ nếu cần
@@ -716,6 +726,8 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 - `SNAPSHOT_FILE  = data/snapshot_data.json` — format: `{synced_at, count, records: [...]}`
 - Cả 2 file overwrite mỗi lần chạy, gitignored, giữ lại để debug
 - Map step: `game_id_set` + `product_name_map` từ game_list → filter snapshot → attach product_name
+- Lọc record `platform` rỗng (xem AX-47) → log cảnh báo kèm danh sách `game_id` bị bỏ
+- Circuit breaker: tỉ lệ thiếu platform > `ERROR_THRESHOLD_PCT` (default 20) → `sys.exit(1)`, KHÔNG upsert dataset đã bị xén
 - Log rõ: N games, M snapshot records, K records sau filter, X records upserted
 
 ### 16.4 Backend service
@@ -805,8 +817,11 @@ Constraint: `UNIQUE(game_id, platform)` — upsert strategy.
 | **AX-17** | Status tính server-side từ env var threshold, không hardcode |
 | **AX-18** | `applySearch()` / `applyFilter()` gọi `_applyAndRenderTable()` — KHÔNG gọi `_renderDetail()` (sẽ mất focus input) |
 | **AX-19** | `_buildDetailShell()` render 1 lần duy nhất — KHÔNG rebuild khi filter thay đổi |
-| **AX-20** | game_id trong sync: dùng `product_code` làm fallback khi `game_id: null` từ MCP |
+| **AX-20** | `fetch_game_list()` join bằng `game_id` (nexus slug) — KHÔNG fallback sang `product_code`. Bản ghi thiếu `game_id` là sản phẩm phi-game → bỏ qua |
 | **AX-21** | Sync script dùng 2 MCP calls — KHÔNG loop `fetch_sdk_snapshot(game_id)` per game |
+| **AX-45** | `game_list` status filter gửi server-side qua `arguments.status` với vocabulary MỚI (`Operating`/`New`) — KHÔNG lọc client-side bằng `ACTIVE`/`NOT_RELEASED` (output không còn trả giá trị legacy) |
+| **AX-46** | Param chọn cột của `game_list` là `dimensions` — KHÔNG phải `fields` (gateway bỏ qua im lặng, trả đủ 28 cột) |
+| **AX-47** | Bước 3 `run_sync.py` loại record `platform` rỗng — chặn cả `None` LẪN chuỗi rỗng/khoảng trắng (`""` lọt qua NOT NULL, tạo dòng rác). KHÔNG whitelist `android/ios/windows` (sẽ nuốt platform mới), KHÔNG `.lower()/.strip()` giá trị (platform là nửa khoá `UNIQUE(game_id, platform)`) |
 | **AX-22** | `sync/data/` gitignored — KHÔNG commit file game_list.json hoặc snapshot_data.json |
 | **AX-23** | Ticket Reminder onclick dùng `&quot;` encoding — KHÔNG dùng single-quote wrapper với JSON data |
 | **AX-24** | `service_ids` luôn là string list (`[str(s) for s in ...]`) — server expect string IDs |
@@ -1092,6 +1107,76 @@ RESPONSE 200
 - **Fix**: đổi sang `overflow-y: auto; overflow-x: visible` — mỗi tab tự scroll dọc khi content vượt height
 - **Không ảnh hưởng product picker**: `#tkr-body-product-panel` được append vào `<body>` với `position:fixed`, thoát mọi overflow context của ancestor
 - **Bump cache**: `ticket-reminder.css?v=1.0` → `?v=1.1`
+
+### v4.8.11 chi tiết
+- **Feature mới "Playtime Tracking"** — key `ping_playing_time`, giá trị `{"active":1,"interval":60}`
+- **Tri-state** (không phải boolean):
+
+  | Config | Badge | Note ở Tool 1 |
+  |---|---|---|
+  | thiếu key | OFF | ⚠ *not have been deployed yet* |
+  | `{"active":0,...}` | OFF | `interval: 60s` |
+  | `{"active":1,...}` | ON | `interval: 60s` |
+
+- **6 nơi đã sửa**: `FEATURE_KEYS` (backend) · `FEATURES` · `FEATURE_COLS` (label `Playtime`) ·
+  `case` trong `renderFeatureDetail()` · guard `missingNote` · `icons` map (⏱️)
+- **`isEnabled` nhận cả `1` lẫn `"1"`** (JS `Number(d?.active) === 1`, Python `d.get("active") in (1, "1")`):
+  Bootstrap API đã từng trả boolean dạng chuỗi (`bann.banned === 'true'`, `notify.show === 'true'`),
+  nên bản chặt `=== 1` sẽ báo Disabled sai mà không ai biết. **Parity đã test 16 case, khớp 100%** (xem AX-49)
+- **`d == null`** trong `summary`, KHÔNG dùng `!d` (sẽ nuốt luôn giá trị `0`)
+- **Guard `missingNote`** ([index.html](frontend/index.html) `renderFeatureDetail`): thuần cộng thêm —
+  11 feature cũ không khai field này nên vẫn ra câu "No configuration found for this feature." như trước
+- **Note theo từng platform/country là miễn phí**: detail panel đổi `curData` theo tab đang chọn nên
+  tab iOS chưa deploy sẽ tự hiện note, không cần code thêm
+- **Giới hạn đã biết — card chỉ có 1 dòng summary cho cả 2 platform**: `aDefault || iDefault` chỉ `null`
+  khi **cả hai** platform đều thiếu key. Nếu Android đã deploy mà iOS chưa, card hiện `interval: ...`
+  và badge iOS xám — nhìn giống hệt "iOS deploy rồi nhưng tắt". Phải mở detail → tab iOS mới thấy note
+- **Giới hạn đã biết — Tool 2 vẫn nhị phân**: column order bị khoá bởi AX-09 (`Feature | Enabled | Android |
+  iOS | [countries] | Rate | Bar`), toàn bộ là ma trận boolean. Game "chưa deploy" và game "tắt" đều rơi vào
+  `disabledGames`, không phân biệt được. Câu *"88 game thì game nào chưa deploy"* hiện **không** trả lời được —
+  muốn có thì backend phải trả giá trị thay vì boolean + thêm loại cột mới
+- **`interval` chỉ ở Tool 1** (card summary + detail panel), không lên Tool 2 vì lý do trên
+- **KHÔNG thêm vào `SAMPLE_JSON`**: demo hiện OFF + note — đúng semantics, lại test miễn phí nhánh "chưa deploy"
+- **Cache**: `FEATURES` nằm inline trong `index.html` nên cơ chế `?v=` (chỉ áp cho file JS/CSS ngoài) không
+  có tác dụng — sau deploy có thể cần hard-refresh
+- **Files thay đổi**: [bootstrap_service.py](backend/services/bootstrap_service.py), [index.html](frontend/index.html)
+
+### v4.8.10 chi tiết
+- **Triệu chứng**: upsert Supabase fail vì `platform` NOT NULL — MCP trả 1 record `game_id='ktovn'` có `platform=null`
+- **Bản chất dữ liệu**: `ktovn` đã có đủ 3 record hợp lệ (android 3.17.0 / ios 3.17.2 / windows 2.3.0, ngày 19/10).
+  Record null mang `latest_version='3.9.1'` ngày 18/10 — cũ hơn, version lùi ⇒ rác từ case test / API gọi sai, **bỏ đi không mất gì**
+- **Fix**: bước 3 [run_sync.py](sync/run_sync.py) bỏ qua record có `platform` rỗng, log cảnh báo kèm `game_id`
+- **Chặn cả chuỗi rỗng**, không chỉ `None`: `""` **lọt qua** ràng buộc NOT NULL và insert dòng rác im lặng —
+  nguy hiểm hơn `None` (None ít nhất còn fail ồn ào)
+- **KHÔNG whitelist** `android/ios/windows`: chặt hơn mức cần, và sẽ âm thầm nuốt platform mới nếu GDS thêm
+- **KHÔNG normalize** giá trị (`.lower()`/`.strip()` ghi đè): `platform` là nửa khoá `UNIQUE(game_id, platform)` —
+  đổi giá trị = đổi khoá = sinh dòng trùng thay vì update. Chỉ `.strip()` để *kiểm tra*
+- **Kích hoạt `ERROR_THRESHOLD_PCT`** (khai báo từ lâu ở dòng 28 nhưng chưa từng được dùng): tỉ lệ thiếu platform
+  vượt ngưỡng (default 20%) → `exit(1)`, phân biệt "1 record test lạc" với "upstream vừa hỏng"
+- **Dọn biến chết**: `skipped_game_ids` (build xong không ai đọc) → thay bằng counter `not_in_list`
+- **Sửa log cũ**: "không trong ACTIVE/NOT_RELEASED" → "không ở trạng thái Operating/New" (sót từ v4.8.9)
+- **Kết quả**: 117 records / 56 games upsert, `ktovn` null bị bỏ kèm cảnh báo
+- **Files thay đổi**: [run_sync.py](sync/run_sync.py) (bước 3). `mcp_client.py`, `supabase_writer.py` **không đổi**
+
+### v4.8.9 chi tiết
+- **Triệu chứng**: `sync/run_sync.py` dừng ở bước 1 với `"Không có game nào với status ACTIVE/NOT_RELEASED."`
+- **Root cause**: MCP `game_list` đổi vocabulary status → `Operating` / `New` / `Closed` / `Inactived`.
+  Legacy `ACTIVE`/`NOT_RELEASED` vẫn được chấp nhận làm **filter đầu vào** nhưng **không còn xuất hiện trong output**,
+  nên filter client-side `if status not in {"ACTIVE","NOT_RELEASED"}` loại sạch **701/701** dòng
+- **Fix 1 — status**: lọc server-side `arguments.status = ["Operating", "New"]` (701 → 181 dòng).
+  `ACTIVE_STATUSES` giữ cả 4 giá trị (`OPERATING`, `NEW`, `ACTIVE`, `NOT_RELEASED`) làm lớp phòng hờ nếu server rollback
+- **Fix 2 — `fields` → `dimensions`**: param chọn cột đã đổi tên; `fields` bị gateway **bỏ qua im lặng** (trả đủ 28 cột, không báo lỗi)
+- **Fix 3 — bỏ fallback `product_code`**: MCP nay đã trả `game_id` thật (nexus slug `antvn`, `abmglobal`).
+  Trong 181 dòng Operating/New chỉ 22 dòng thiếu `game_id` và đều là sản phẩm phi-game (`Chung cho SP G1`, `CSM`,
+  `GS9 Global Web Server`, `VNGGames Loyalty`…). Fallback biến chúng thành `"001"`/`"020"` — không bao giờ khớp
+  slug của snapshot, chỉ thêm 22 id rác và **0 match tăng thêm** → rule AX-20 cũ đã lỗi thời
+- **Thêm dedup theo `game_id`**: 1 `game_id` gắn nhiều product theo market → 181 dòng còn **122 games**
+- **Kết quả**: 122 games → join 214 snapshot records → **117 records / 55 games** upsert.
+  67 game active còn lại chưa có dữ liệu SDK snapshot (chưa tích hợp / chưa có login) — không phải lỗi
+- **Files thay đổi**: [mcp_client.py](sync/mcp_client.py) (`fetch_game_list`). `run_sync.py`, `supabase_writer.py`,
+  `oauth_client.py`, backend và frontend **không đổi**
+- **Không đổi**: tool name `sdk___version_snapshot`, OAuth client credentials, JSON-RPC 2.0 + SSE parsing,
+  schema `sdk_version_snapshots`. MCP gateway version 1.21.0
 
 ### v4.8.8 chi tiết
 - **Kill switch env `TICKET_TOOL_ENABLED`** (default `false`):
