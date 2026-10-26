@@ -112,32 +112,54 @@ def _extract_records(rpc_response: Dict) -> List[Dict]:
     return records
 
 
-ACTIVE_STATUSES = {"ACTIVE", "NOT_RELEASED"}
+# MCP đã đổi vocabulary status sang Operating/New/Closed/Inactived.
+# Legacy ACTIVE/NOT_RELEASED vẫn được chấp nhận làm FILTER đầu vào nhưng
+# KHÔNG còn xuất hiện trong output — giữ cả 2 bộ để phòng server rollback.
+ACTIVE_STATUSES = {"OPERATING", "NEW", "ACTIVE", "NOT_RELEASED"}
+
+# Lọc server-side để khỏi kéo về cả 701 dòng portfolio.
+GAME_LIST_STATUS_FILTER = ["Operating", "New"]
+# Param đúng của tool hiện tại là "dimensions" (trước đây script gửi "fields",
+# bị gateway bỏ qua im lặng và trả về đủ 28 cột).
+GAME_LIST_DIMENSIONS = ["game_id", "product_name", "status"]
 
 
 def fetch_game_list() -> List[Dict]:
     """
     Gọi MCP tool game_list, trả về list {"game_id", "product_name"}
-    cho các game có status ACTIVE hoặc NOT_RELEASED.
+    cho các game đang Operating / New (legacy: ACTIVE / NOT_RELEASED).
+
+    game_id là nexus package_id slug (vd "antvn") — đúng key để join với
+    sdk___version_snapshot. Bản ghi không có game_id là sản phẩm phi-game
+    (VNGGames Loyalty, CSM, GS9 Global Web Server, ...) nên bỏ qua; KHÔNG
+    fallback sang product_code vì code 3 ký tự ("001") không bao giờ khớp
+    slug của snapshot.
     """
     response = _call_jsonrpc("tools/call", {
         "name": "game_list",
         "arguments": {
-            "fields": ["game_id", "product_name", "status"],
+            "status": GAME_LIST_STATUS_FILTER,
+            "dimensions": GAME_LIST_DIMENSIONS,
         },
     })
     records = _extract_records(response)
-    games = []
+    games: List[Dict] = []
+    seen_ids: set = set()
     for r in records:
         status = (r.get("status") or "").upper()
         if status not in ACTIVE_STATUSES:
             continue
-        gid = r.get("game_id") or r.get("product_code") or r.get("id") or r.get("gameId")
+        gid = r.get("game_id")
         if not gid:
             continue
+        gid = str(gid)
+        # 1 game_id có thể gắn với nhiều product theo market — chỉ giữ 1 lần.
+        if gid in seen_ids:
+            continue
+        seen_ids.add(gid)
         games.append({
-            "game_id": str(gid),
-            "product_name": r.get("product_name") or r.get("name") or "",
+            "game_id": gid,
+            "product_name": r.get("product_name") or "",
         })
     return games
 
