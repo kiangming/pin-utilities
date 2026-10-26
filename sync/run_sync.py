@@ -84,20 +84,50 @@ def main():
     product_name_map: Dict[str, str] = {g["game_id"]: g["product_name"] for g in games}
 
     matched: List[Dict] = []
-    skipped_game_ids: set = set()
+    no_platform: List[str] = []
+    not_in_list = 0
+
     for rec in all_snapshots:
         gid = str(rec.get("game_id") or "")
         if not gid or gid not in game_id_set:
-            skipped_game_ids.add(gid or "(empty)")
+            not_in_list += 1
             continue
+
+        # DB đặt platform NOT NULL. MCP thỉnh thoảng trả platform rỗng
+        # (game test / API bị gọi sai) → bỏ qua thay vì để vỡ cả batch.
+        # Chặn cả chuỗi rỗng: "" LỌT qua ràng buộc NOT NULL và tạo dòng rác,
+        # nguy hiểm hơn None (None ít nhất còn fail ồn ào).
+        platform = rec.get("platform")
+        if platform is None or not str(platform).strip():
+            no_platform.append(gid)
+            continue
+
         rec["product_name"] = product_name_map[gid]
         matched.append(rec)
 
     print(
         f"[sync] {len(matched)} records khớp game list "
-        f"({len(all_snapshots) - len(matched)} loại bỏ — không trong ACTIVE/NOT_RELEASED)",
+        f"({not_in_list} loại bỏ — game không ở trạng thái Operating/New)",
         flush=True,
     )
+    if no_platform:
+        print(
+            f"[sync] ⚠️  Bỏ qua {len(no_platform)} record thiếu platform: "
+            f"{', '.join(sorted(set(no_platform)))}",
+            flush=True,
+        )
+
+    # Circuit breaker: 1 record test lạc thì bỏ qua, nhưng nếu tỉ lệ thiếu
+    # platform vượt ngưỡng thì nghi upstream hỏng — dừng, đừng upsert
+    # một dataset đã bị xén.
+    checked = len(matched) + len(no_platform)
+    if checked and len(no_platform) / checked * 100 > ERROR_THRESHOLD_PCT:
+        print(
+            f"[sync] FATAL: {len(no_platform)}/{checked} record thiếu platform "
+            f"(vượt ngưỡng {ERROR_THRESHOLD_PCT}%) — nghi upstream lỗi, dừng.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # ── Bước 4: Upsert vào Supabase ───────────────────────────────────────────
     print("\n[sync] Bước 4: Upsert vào Supabase...", flush=True)
